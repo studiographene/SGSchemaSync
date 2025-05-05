@@ -7,7 +7,7 @@ This tool parses an OpenAPI JSON file (local or remote) and generates:
 *   Axios-based functions for calling each API endpoint defined in the spec.
 *   Optionally, TanStack Query (v4/v5) hooks (`useQuery`, `useMutation`) wrapping the Axios functions.
 
-Files are organized by the first `tag` associated with each endpoint in the OpenAPI specification.
+Files are organized into **tag-based directories**, where the tag is determined by the first `tag` associated with each endpoint in the OpenAPI specification.
 
 ## Installation
 
@@ -15,7 +15,9 @@ Install the tool as a development dependency in your project using PNPM:
 
 ```bash
 # Replace with the actual Git URL or NPM package name once published
-pnpm add -D git@github.com:diogo-SG/hackathon-2025.git 
+pnpm add -D git+ssh://git@github.com/diogo-SG/hackathon-2025.git 
+# or using HTTPS:
+# pnpm add -D git+https://github.com/diogo-SG/hackathon-2025.git 
 # or if published to NPM:
 # pnpm add -D api-client-generator 
 ```
@@ -32,81 +34,60 @@ pnpm generate-api-client -i <path_or_url_to_openapi.json> -o ./src/api/generated
 **Options:**
 
 *   `-i, --input <path_or_url>`: (Required) Path to a local OpenAPI JSON file or a URL pointing to one.
-*   `-o, --output <directory>`: (Required) The base output directory where the generated files will be placed (relative to the current working directory). The tool will create `types`, `functions`, and optionally `query-hooks` subdirectories within this path.
+*   `-o, --output <directory>`: (Required) The base output directory where the tag-based generated folders will be placed (relative to the current working directory).
 *   `--react-query`: (Optional) Generate TanStack Query hooks (`useQuery`/`useMutation`) in addition to the base Axios functions.
 
 ## Generated File Structure
 
-With `--react-query` enabled:
+The tool generates a directory for each API tag found in the specification. For a tag named `Users`, the structure would be:
 
 ```
 <output_directory>/  
-├── types/            
-│   ├── users.ts        
-│   └── ...           
-├── functions/        
-│   ├── users.ts        
-│   └── ...           
-└── query-hooks/      # Optional: Contains TanStack Query hooks
-    ├── users.ts        
-    └── ...           
+├── users/              # Folder for the 'Users' tag (name sanitized)
+│   ├── index.ts        # Exports all types, functions, and hooks
+│   ├── types.ts        # Generated TypeScript interfaces
+│   ├── functions.ts    # Generated base Axios functions
+│   └── hooks.ts        # Optional: Generated TanStack Query hooks
+└── products/           # Folder for the 'Products' tag
+    ├── index.ts
+    ├── types.ts
+    ├── functions.ts
+    └── hooks.ts        # Optional
 ```
 
-Without `--react-query`, the `query-hooks` directory is not created.
-
-*Tag names are sanitized for filenames (lowercase, spaces/slashes replaced with hyphens).* 
+*   Tag names are sanitized for directory names (lowercase, spaces/slashes replaced with hyphens).
+*   The `hooks.ts` file is only generated if the `--react-query` flag is used.
+*   The `index.ts` file provides convenient barrel exports.
 
 ## Generated Code
 
-### Types (`<output_directory>/types/<tag>.ts`)
+Each tag directory contains the following files:
+
+### `types.ts`
 
 Contains TypeScript interfaces generated from the OpenAPI schemas for:
-*   Request Bodies (e.g., `CreateUserRequestBody`)
-*   Successful Responses (e.g., `GetUserResponse`, `ListUsersResponse200`)
-*   Query Parameters (e.g., `ListUsersParameters`)
+*   Request Bodies (Named like: `[BaseName]_[METHOD]_Request`, e.g., `User_POST_Request`)
+*   Successful Responses (Named like: `[BaseName]_[METHOD]_Response`, e.g., `UserById_GET_Response`)
+*   Query Parameters (Named like: `[BaseName]_[METHOD]_Parameters`, e.g., `Users_GET_Parameters`)
 
-*Note: If type generation fails due to issues in the OpenAPI spec (like broken `$ref`s), a warning comment will be added to the file instead of the type.* 
+*   `[BaseName]` is derived preferably from the `operationId` (PascalCase), falling back to a PascalCase version of the path with parameters converted (e.g., `/users/{id}` -> `UsersById`).
+*   `[METHOD]` is the uppercase HTTP method (GET, POST, etc.).
+*   *Note: If type generation fails due to issues in the OpenAPI spec (like broken `$ref`s), a warning comment will be added to the file instead of the type.*
 
-### Functions (`<output_directory>/functions/<tag>.ts`)
+### `functions.ts`
 
 Contains async functions for each API operation associated with the tag.
 
-*   **Naming:** Function names are derived from the `operationId` in the spec, falling back to a name generated from the HTTP method and path.
+*   **Naming:** Function names follow the pattern `[PascalCaseEndpoint]_[METHOD_UPPERCASE]` (e.g., `UsersById_GET`, `Users_POST`). `[PascalCaseEndpoint]` is derived from the path structure (e.g., `/users/{id}` -> `UsersById`).
 *   **Parameters:** Functions include parameters for:
     *   Path variables (currently typed as `string`).
-    *   Request body (`data:` parameter, typed using the generated RequestBody interface).
-    *   Query parameters (`params?:` parameter, typed using the generated Parameters interface).
-    *   An optional final `config?: AxiosRequestConfig` parameter to allow overriding Axios settings (e.g., adding headers, authentication tokens).
-*   **Return Type:** Functions return `Promise<AxiosResponse<T>>`, where `T` is the generated interface for the primary success response (e.g., 200 for GET, 201 for POST) or `void` for responses like 204 No Content.
-*   **Error Handling:** If type generation failed for request body, parameters, or response, the function signature will use `any` as a fallback, and a warning comment will be prepended to the function definition.
+    *   Request body (`data:` parameter, typed using the corresponding `..._Request` type from `types.ts`).
+    *   Query parameters (`params?:` parameter, typed using the corresponding `..._Parameters` type from `types.ts`).
+    *   An optional final `config?: AxiosRequestConfig` parameter.
+*   **Return Type:** Functions return `Promise<AxiosResponse<T>>`, where `T` is the corresponding `..._Response` type from `types.ts` (or `any`/`void` if generation failed/not applicable).
+*   **Error Handling:** Warning comments are prepended if related type generation failed.
 
-**Example Usage of Generated Code:**
-
-```typescript
-import { GetUserById } from './api/generated/functions/users';
-import type { GetUserByIdResponse } from './api/generated/types/users';
-import type { AxiosResponse } from 'axios';
-
-async function fetchUser(userId: string) {
-  try {
-    const response: AxiosResponse<GetUserByIdResponse> = await GetUserById(userId, {
-      // Example: Add authentication header via Axios config
-      headers: {
-        Authorization: `Bearer YOUR_TOKEN`
-      }
-    });
-    
-    if (response.status === 200) {
-      console.log('User:', response.data); // response.data is typed as GetUserByIdResponse
-    } 
-  } catch (error) {
-    // Handle API call errors (network, non-2xx status codes)
-    console.error('Failed to fetch user:', error);
-  }
-}
-```
-
-### Query Hooks (`<output_directory>/query-hooks/<tag>.ts`)
+### `hooks.ts`
 
 *(Generated only if `--react-query` flag is used)*
 
@@ -114,72 +95,70 @@ Contains TanStack Query (React Query) hooks wrapping the base Axios functions:
 
 *   **`useQuery` Hooks (for GET requests):**
     *   Named like `use[FunctionName]` (e.g., `useUsersById_GET`).
-    *   Accept path parameters, an optional `params` object (if query parameters exist), and optional `UseQueryOptions`.
-    *   Automatically constructs a query key based on the tag, endpoint, path parameters, and query parameters.
-    *   The `queryFn` calls the base Axios function and returns `response.data`.
+    *   Accepts path parameters, an optional `params` object, and optional `UseQueryOptions`.
+    *   Constructs a query key.
+    *   Calls the corresponding function from `functions.ts`.
 *   **`useMutation` Hooks (for POST, PUT, PATCH, DELETE requests):**
     *   Named like `use[FunctionName]` (e.g., `useUsers_POST`).
-    *   Accept optional `UseMutationOptions`.
-    *   The variables passed to the hook\'s `mutate` function should be an object containing required path parameters, the `data` payload (if applicable), and `params` (if applicable).
-    *   The `mutationFn` calls the base Axios function with the provided variables and returns `response.data`.
+    *   Accepts optional `UseMutationOptions`.
+    *   Expects a `variables` object passed to `mutate`/`mutateAsync` containing path parameters, `data`, and/or `params` as needed by the corresponding function in `functions.ts`.
+    *   Calls the corresponding function from `functions.ts`.
 
-**Dependencies:** If you use the `--react-query` flag, your project **must** have `@tanstack/react-query` installed:
+### `index.ts`
+
+Provides barrel exports for convenience:
+```typescript
+export * from './types';
+export * from './functions';
+// export * from './hooks'; // Conditionally exported
+```
+
+## Example Usage
+
+```typescript
+// Import via the index file
+import { UsersById_GET, useUsersById_GET } from '@/api/generated/users'; 
+import type { UsersById_GET_Response } from '@/api/generated/users';
+import type { AxiosResponse } from 'axios';
+
+// Using the base function
+async function fetchUser(userId: string) {
+  try {
+    const response: AxiosResponse<UsersById_GET_Response> = await UsersById_GET(userId);
+    console.log('User:', response.data);
+  } catch (error) {
+    console.error('Failed to fetch user:', error);
+  }
+}
+
+// Using the TanStack Query hook
+function UserComponent({ userId }: { userId: string }) {
+  const { data: user, isLoading, error } = useUsersById_GET(userId, undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
+  // ... render logic ...
+}
+```
+
+## Dependencies (when using `--react-query`)
+
+If you use the `--react-query` flag, your project **must** have `@tanstack/react-query` installed:
 
 ```bash
 pnpm add @tanstack/react-query
-# or
-yarn add @tanstack/react-query
-# or
-npm install @tanstack/react-query
-```
-
-**Example Usage of Generated Hooks:**
-
-```typescript
-import { useUsersById_GET } from \'./api/generated/query-hooks/users\';
-import { useUsers_POST } from \'./api/generated/query-hooks/users\';
-import type { Users_POST_Request } from \'./api/generated/types/users\';
-
-function UserProfile({ userId }: { userId: string }) {
-  const { data: user, isLoading, error } = useUsersById_GET(userId, undefined, { // No query params
-    // React Query options, e.g., staleTime
-    staleTime: 5 * 60 * 1000, 
-  });
-
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error loading user: {error.message}</div>;
-
-  return <div>User Name: {user?.name}</div>; // data is typed!
-}
-
-function CreateUserForm() {
-  const createUserMutation = useUsers_POST({
-    onSuccess: (newUser) => {
-      console.log(\'User created!\', newUser); // newUser is typed
-      // Invalidate user list query, etc.
-    },
-    onError: (error) => {
-       console.error(\'Failed to create user:\', error.message);
-    }
-  });
-
-  const handleSubmit = (formData: Users_POST_Request) => {
-    createUserMutation.mutate({ data: formData }); // Pass variables object
-  };
-
-  // ... render form ...
-}
+# or yarn add / npm install
 ```
 
 ## Pitfalls & Known Issues
 
-*   **OpenAPI Specification Quality:** The quality of the generated code heavily depends on the correctness and completeness of the input OpenAPI specification.
-    *   **Broken `$ref`s:** The tool attempts to dereference `$ref` pointers. If this fails (e.g., the reference target doesn't exist in `components`), the tool will issue a warning and proceed using the original spec. Subsequent type generation relying on that `$ref` will likely fail, resulting in warning comments in the type file and `any` types in function signatures.
-    *   **Invalid Schemas:** If a schema is invalid or too complex for `json-schema-to-typescript` to parse, type generation for it will fail, resulting in warnings and fallbacks to `any`.
-*   **Parameter Handling:** Currently, only basic query parameter handling is implemented. Header, cookie, and complex path parameter serialization might not be fully supported.
-*   **Content Types:** Assumes `application/json` for request and response bodies. Other content types are not explicitly handled.
-*   **Authentication:** The tool does not automatically handle authentication methods defined in the spec. You need to pass necessary headers or configurations via the `config` parameter of the generated functions.
-*   **React Query Version:** Assumes TanStack Query v4 or v5 API compatibility.
+*   **OpenAPI Specification Quality:** Accuracy depends heavily on the input spec.
+    *   **Broken `$ref`s:** Dereferencing is attempted. If it fails, generation proceeds with the original spec, potentially leading to type generation failures (indicated by comments and `any` types).
+    *   **Invalid Schemas:** Complex or invalid schemas may cause type generation to fail.
+*   **Naming Collisions:** While efforts are made to generate unique names based on paths and methods, extremely similar paths might still rarely lead to collisions. Review generated files if your spec has highly ambiguous paths.
+*   **Parameter Handling:** Only basic query parameter handling is implemented.
+*   **Content Types:** Assumes `application/json`.
+*   **Authentication:** Pass auth details via the `config` parameter.
+*   **React Query Version:** Assumes TanStack Query v4/v5 API compatibility.
 
 ---
 
