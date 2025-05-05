@@ -1,16 +1,20 @@
 // Package configuration for code generation
 export interface PackageConfig {
-  generateFunctionNames: string;
   generateFunctions: boolean;
+  generateHooks: boolean;
+  generateFunctionNames: string;
   generateTypesNames: string;
+  generateHooksNames: string;
   baseURL: string;
 }
 
 // Default package configuration
 export const defaultPackageConfig: PackageConfig = {
-  generateFunctionNames: "{Method}{Endpoint}.ts",
   generateFunctions: true,
-  generateTypesNames: "{Method}{Endpoint}.types.ts",
+  generateHooks: true,
+  generateFunctionNames: "{method}{Endpoint}",
+  generateTypesNames: "{Method}{Endpoint}Types",
+  generateHooksNames: "use{Method}{Endpoint}",
   // Default to empty string - should be overridden by client configuration
   baseURL: "",
 };
