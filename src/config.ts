@@ -5,6 +5,7 @@ export interface PackageConfig {
   generateFunctionNames: string;
   generateTypesNames: string;
   generateHooksNames: string;
+  baseDir: string;
   baseURL: string;
 }
 
@@ -15,6 +16,7 @@ export const defaultPackageConfig: PackageConfig = {
   generateFunctionNames: "{method}{Endpoint}",
   generateTypesNames: "{Method}{Endpoint}Types",
   generateHooksNames: "use{Method}{Endpoint}",
+  baseDir: "test-output/api/config-test",
   // Default to empty string - should be overridden by client configuration
   baseURL: "",
 };

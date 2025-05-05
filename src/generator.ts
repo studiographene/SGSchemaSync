@@ -10,12 +10,14 @@ import {
   createTopLevelBanner,
   createOperationGroupBanner,
 } from "./helpers/generator-helpers";
+import { PackageConfig, defaultPackageConfig } from "./config";
 
 export async function generateFilesForTag(
   tagName: string,
   operations: OperationInfo[],
   spec: OpenAPIV3.Document,
-  reactQueryEnabled: boolean
+  reactQueryEnabled: boolean,
+  packageConfig: Partial<PackageConfig>
 ): Promise<{ typesContent: string; functionsContent: string; hooksContent: string }> {
   // Create top-level banner for types file
   const typeTopBanner = createTopLevelBanner("types");
@@ -48,9 +50,22 @@ export async function generateFilesForTag(
     const baseNameForTypes = operationId ? toPascalCase(operationId) : getPathBasedBaseName(path);
 
     // --- Generate function name using new convention ---
-    const endpointBaseName = getPathBasedBaseName(path); // Always use path for endpoint part
+    const endpointBaseName = getPathBasedBaseName(path);
     const methodUpper = method.toUpperCase();
-    const functionName = `${endpointBaseName}_${methodUpper}`;
+    const methodPascal = toPascalCase(method);
+    
+    // Generate names using templates from config
+    const functionName = (packageConfig.generateFunctionNames ?? defaultPackageConfig.generateFunctionNames)
+      .replace("{method}", methodPascal)
+      .replace("{Endpoint}", endpointBaseName);
+
+    const typeBaseName = (packageConfig.generateTypesNames ?? defaultPackageConfig.generateTypesNames)
+      .replace("{Method}", methodPascal)
+      .replace("{Endpoint}", endpointBaseName);
+
+    const hookBaseName = (packageConfig.generateHooksNames ?? defaultPackageConfig.generateHooksNames)
+      .replace("{Method}", methodPascal)
+      .replace("{Endpoint}", endpointBaseName);
 
     // Add Operation Banners to Types File (using operation summary)
     const summary = operation.summary || "No Description Provided";
@@ -65,16 +80,15 @@ export async function generateFilesForTag(
     let requestBodyFailed = false;
     let actualParametersTypeName: string | null = null;
     let parametersTypeFailed = false;
-    // Use baseNameForTypes for generating type names
     let primaryResponseTypeName: string | null = null;
     let primaryResponseTypeGenerated = false;
     let responseTypeFailed = false;
 
-    // --- Generate Request Body Type (uses baseNameForTypes) ---
+    // --- Generate Request Body Type ---
     if (operation.requestBody && "content" in operation.requestBody) {
       const requestBodySchema = operation.requestBody.content?.["application/json"]?.schema;
       if (requestBodySchema) {
-        const typeName = `${baseNameForTypes}_${methodUpper}_Request`;
+        const typeName = `${typeBaseName}_Request`;
         actualRequestBodyTypeName = typeName;
         if (!generatedTypeNames.has(typeName)) {
           try {
@@ -92,7 +106,7 @@ export async function generateFilesForTag(
       }
     }
 
-    // --- Generate Response Types (uses baseNameForTypes) ---
+    // --- Generate Response Types ---
     for (const statusCode in operation.responses) {
       if (statusCode.startsWith("2")) {
         const response = operation.responses[statusCode] as OpenAPIV3.ResponseObject;
@@ -100,7 +114,7 @@ export async function generateFilesForTag(
         const isPrimary = statusCode === primarySuccessCode;
         if (response && "content" in response && response.content?.["application/json"]?.schema) {
           const responseSchema = response.content["application/json"].schema;
-          const typeName = `${baseNameForTypes}_${methodUpper}_Response${isPrimary ? "" : `_${statusCode}`}`;
+          const typeName = `${typeBaseName}_Response${isPrimary ? "" : `_${statusCode}`}`;
           if (isPrimary) primaryResponseTypeName = typeName;
           if (!generatedTypeNames.has(typeName)) {
             try {
@@ -131,7 +145,7 @@ export async function generateFilesForTag(
       }
     }
 
-    // --- Generate Parameters Type (uses baseNameForTypes) ---
+    // --- Generate Parameters Type ---
     const queryParams =
       (operation.parameters?.filter(
         (p) => (p as OpenAPIV3.ParameterObject).in === "query"
@@ -150,7 +164,7 @@ export async function generateFilesForTag(
         }
       });
       if (Object.keys(paramsSchema.properties || {}).length > 0) {
-        const typeName = `${baseNameForTypes}_${methodUpper}_Parameters`;
+        const typeName = `${typeBaseName}_Parameters`;
         actualParametersTypeName = typeName;
         if (!generatedTypeNames.has(typeName)) {
           try {
@@ -265,7 +279,7 @@ export async function generateFilesForTag(
 
       if (method === "get") {
         // ... (useQuery generation logic) ...
-        const hookName = `use${functionName}`;
+        const hookName = hookBaseName;
         queryHookParamsList.push(
           `options?: Omit<UseQueryOptions<${finalResponseTypeNameForHook}, AxiosError>, 'queryKey' | 'queryFn'>`
         );
@@ -297,7 +311,7 @@ export async function generateFilesForTag(
         hookString += `};\n`;
       } else {
         // ... (useMutation generation logic) ...
-        const hookName = `use${functionName}`;
+        const hookName = hookBaseName;
         let mutationVariablesTypeParts: string[] = [];
         pathParamNames.forEach((p) => mutationVariablesTypeParts.push(`${p}: string`));
         if (actualRequestBodyTypeName) {
