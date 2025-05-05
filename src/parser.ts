@@ -10,6 +10,7 @@ export interface PackageConfig {
   generateFunctionNames: string;
   generateFunctions: boolean;
   generateTypesNames: string;
+  baseURL: string;
 }
 
 // Default package configuration
@@ -17,18 +18,18 @@ export const defaultPackageConfig: PackageConfig = {
   generateFunctionNames: "{Method}{Endpoint}.ts",
   generateFunctions: true,
   generateTypesNames: "{Method}{Endpoint}.types.ts",
+  // Default to empty string - should be overridden by environment config
+  baseURL: "",
 };
 
 // Axios request configuration
 export interface RequestConfig {
-  baseURL?: string;
   timeout?: number;
   headers?: Record<string, string>;
 }
 
 // Default axios request configuration
 export const defaultRequestConfig: RequestConfig = {
-  baseURL: "https://dev.surveyapi.59club.studiographene.xyz/api-docs/",
   timeout: 10000,
   headers: {
     "Accept": "application/json, text/plain",
@@ -40,54 +41,48 @@ export interface ParserConfig {
   requestConfig?: Partial<RequestConfig>;
 }
 
-export async function loadAndParseSpec(
-  inputPathOrUrl: string,
-  config: ParserConfig = {}
-): Promise<OpenAPISpec> {
+export async function loadAndParseSpec(config: ParserConfig = {}): Promise<OpenAPISpec> {
+  // Merge default package config with provided package config
+  const mergedPackageConfig = {
+    ...defaultPackageConfig,
+    ...config.packageConfig,
+  };
+
+  // Validate baseURL is provided
+  if (!mergedPackageConfig.baseURL) {
+    throw new Error("baseURL is required in package configuration. Please provide it through environment variables or config.");
+  }
+
   let specContent: string;
+  const specUrl = `${mergedPackageConfig.baseURL}`;
 
-  if (inputPathOrUrl.startsWith("http://") || inputPathOrUrl.startsWith("https://")) {
-    console.log(`Fetching spec from URL using axios: ${inputPathOrUrl}`);
-    try {
-      // Merge default request config with provided request config
-      const mergedRequestConfig = {
-        ...defaultRequestConfig,
-        ...config.requestConfig,
-        headers: {
-          ...defaultRequestConfig.headers,
-          ...config.requestConfig?.headers,
-        },
-      };
+  console.log(`Fetching spec from URL: ${specUrl}`);
+  try {
+    // Merge default request config with provided request config
+    const mergedRequestConfig = {
+      ...defaultRequestConfig,
+      ...config.requestConfig,
+      headers: {
+        ...defaultRequestConfig.headers,
+        ...config.requestConfig?.headers,
+      },
+    };
 
-      // Use axios.get to fetch the spec with merged config
-      const response = await axios.get(inputPathOrUrl, {
-        ...mergedRequestConfig,
-        responseType: "text",
-      });
-      specContent = response.data;
-    } catch (error: any) {
-      const message = error.response ? `${error.message} (status: ${error.response.status})` : error.message;
-      throw new Error(`Failed to fetch spec from ${inputPathOrUrl}: ${message}`);
-    }
-  } else {
-    console.log(`Reading spec from file: ${inputPathOrUrl}`);
-    try {
-      specContent = await fs.readFile(inputPathOrUrl, "utf-8");
-    } catch (error: any) {
-      throw new Error(`Failed to read spec file ${inputPathOrUrl}: ${error.message}`);
-    }
+    // Use axios.get to fetch the spec with merged config
+    const response = await axios.get(specUrl, {
+      ...mergedRequestConfig,
+      responseType: "text",
+    });
+    specContent = response.data;
+  } catch (error: any) {
+    const message = error.response ? `${error.message} (status: ${error.response.status})` : error.message;
+    throw new Error(`Failed to fetch spec from ${specUrl}: ${message}`);
   }
 
   try {
     const parsedSpec = JSON.parse(specContent);
     console.log("Successfully parsed OpenAPI specification.");
     
-    // Merge default package config with provided package config
-    const mergedPackageConfig = {
-      ...defaultPackageConfig,
-      ...config.packageConfig,
-    };
-
     // Add configuration flags to the parsed spec for later use
     return {
       ...parsedSpec,
