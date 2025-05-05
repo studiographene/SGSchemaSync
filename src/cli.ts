@@ -13,8 +13,10 @@ interface CliGeneratorOptions extends CoreGeneratorOptions {
 const program = new Command();
 
 program
-  .name("generate-api-client")
-  .description("Generates type-safe client code from an API specification")
+  .name("sg-schema-sync")
+  .description(
+    "CLI tool to generate type-safe API clients (Axios functions, types, optional TanStack Query hooks) from an OpenAPI v3 specification."
+  )
   .version(packageJson.version); // Use version from package.json
 
 program
