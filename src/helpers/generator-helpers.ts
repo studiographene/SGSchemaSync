@@ -22,16 +22,29 @@ export function toPascalCase(str: string): string {
     .join("");
 }
 
-// Helper for path-based base name
+// Helper for path-based base name (Revised to include parameter info)
 export function getPathBasedBaseName(path: string): string {
   // Remove common prefixes /api/, /v1/, or just leading slash
   const cleanedPath = path.replace(/^\/(api|v\d+)\/|^\//, "");
-  // Remove path parameter segments like /{id} and split
-  const segments = cleanedPath.split("/").filter((seg) => !seg.startsWith("{"));
 
-  if (segments.length === 0 || segments.every((s) => s === "")) return "RootOperation"; // Fallback
+  // Split segments and handle parameters
+  const segments = cleanedPath.split("/").map((seg) => {
+    if (seg.startsWith("{") && seg.endsWith("}")) {
+      // Convert {paramName} to ByParamName
+      const paramName = seg.slice(1, -1);
+      return `By${toPascalCase(paramName)}`;
+    } else {
+      // Convert normal segment to PascalCase
+      return toPascalCase(seg);
+    }
+  });
 
-  return segments.map((part) => toPascalCase(part)).join("");
+  const joined = segments.join("");
+
+  // Handle cases where the path might become empty after processing
+  if (!joined) return "RootOperation"; // Fallback
+
+  return joined;
 }
 
 // --- Banner Formatting Helpers ---
