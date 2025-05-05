@@ -1,12 +1,12 @@
 {
-  "name": "api-client-generator",
+  "name": "sg-schema-sync",
   "version": "0.0.1",
-  "description": "Generates type-safe API client code from OpenAPI specs",
+  "description": "CLI tool to generate type-safe API clients from OpenAPI v3 specs",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "generate-api-client": "./dist/cli.js"
+    "sg-schema-sync": "dist/cli.js"
   },
   "scripts": {
     "build": "rimraf dist && tsc",

@@ -1,10 +1,9 @@
-import fs from "fs/promises";
-// import fetch from "node-fetch"; // Remove node-fetch import
 import axios from "axios"; // Import axios
 import { PackageConfig, defaultPackageConfig } from "./config";
+import { OpenAPIV3 } from "openapi-types"; // Import the specific type
 
-// Basic placeholder type - ideally, install and use a package like 'openapi-types'
-export type OpenAPISpec = any;
+// Define the specific type for the OpenAPI spec object
+export type OpenAPISpec = OpenAPIV3.Document;
 
 // Axios request configuration
 export interface RequestConfig {
@@ -16,7 +15,7 @@ export interface RequestConfig {
 export const defaultRequestConfig: RequestConfig = {
   timeout: 10000,
   headers: {
-    "Accept": "application/json, text/plain",
+    Accept: "application/json, text/plain",
   },
 };
 
@@ -34,7 +33,9 @@ export async function loadAndParseSpec(config: ParserConfig = {}): Promise<OpenA
 
   // Validate baseURL is provided
   if (!mergedPackageConfig.baseURL) {
-    throw new Error("baseURL is required in package configuration. Please provide it through environment variables or config.");
+    throw new Error(
+      "baseURL is required in package configuration. Please provide it through environment variables or config."
+    );
   }
 
   let specContent: string;
@@ -66,7 +67,7 @@ export async function loadAndParseSpec(config: ParserConfig = {}): Promise<OpenA
   try {
     const parsedSpec = JSON.parse(specContent);
     console.log("Successfully parsed OpenAPI specification.");
-    
+
     // Add configuration flags to the parsed spec for later use
     return {
       ...parsedSpec,

@@ -1,4 +1,4 @@
-# API Client Generator
+# sg-schema-sync
 
 A CLI tool to generate type-safe TypeScript API client code from an OpenAPI v3 specification.
 
@@ -11,16 +11,42 @@ Files are organized into **tag-based directories**, where the tag is determined 
 
 ## Installation
 
-Install the tool as a development dependency in your project using PNPM:
+### From GitHub (Recommended for Development)
+
+Install the tool as a development dependency directly from its GitHub repository using PNPM:
 
 ```bash
-# Replace with the actual Git URL or NPM package name once published
-pnpm add -D git+ssh://git@github.com/diogo-SG/hackathon-2025.git 
-# or using HTTPS:
-# pnpm add -D git+https://github.com/diogo-SG/hackathon-2025.git 
-# or if published to NPM:
-# pnpm add -D api-client-generator 
+# Using SSH (if you have SSH keys configured with GitHub):
+pnpm add -D git+ssh://git@github.com/diogo-SG/hackathon-2025.git#main
+
+# Or using HTTPS:
+pnpm add -D git+https://github.com/diogo-SG/hackathon-2025.git#main
+
+# Replace #main with the desired branch, tag, or commit hash if needed.
 ```
+
+### From NPM (Once Published)
+
+If the package is published to NPM, you can install it like this:
+
+```bash
+pnpm add -D sg-schema-sync 
+```
+
+### Local Linking (For Active Development of the Generator Itself)
+
+If you are actively developing this generator tool itself and want to test it in another local project without publishing, you can use `pnpm link`:
+
+1.  Navigate to this `sg-schema-sync` project directory and run:
+    ```bash
+    pnpm link --global
+    ```
+2.  Navigate to the project where you want to use the generator and run:
+    ```bash
+    pnpm link --global sg-schema-sync
+    ```
+
+This creates a symbolic link, allowing the other project to use your local version. Remember to rebuild the generator (`pnpm build`) after making changes. Ensure the pnpm global bin directory (`pnpm bin -g`) is in your `$PATH`.
 
 ## Usage
 
@@ -28,7 +54,7 @@ Run the generator from the root of your project using the command exposed via `p
 
 ```bash
 # Example:
-pnpm generate-api-client -i <path_or_url_to_openapi.json> -o ./src/api/generated
+pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 ```
 
 **Options:**
