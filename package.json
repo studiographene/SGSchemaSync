@@ -1,0 +1,47 @@
+{
+  "name": "api-client-generator",
+  "version": "0.0.1",
+  "description": "Generates type-safe API client code from OpenAPI specs",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "generate-api-client": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "dev": "nodemon src/cli.ts",
+    "start": "node dist/cli.js",
+    "prepublishOnly": "pnpm build",
+    "test-tool": "pnpm build && node dist/cli.js -i https://dev.surveyapi.59club.studiographene.xyz/api/api-docs.json -o test-output/client.ts"
+  },
+  "keywords": [
+    "api",
+    "client",
+    "generator",
+    "typescript",
+    "openapi"
+  ],
+  "author": "",
+  "license": "ISC",
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@types/commander": "^2.12.5",
+    "@types/node": "^22.15.3",
+    "nodemon": "^3.1.10",
+    "openapi-types": "^12.1.3",
+    "prettier": "^3.5.3",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@types/node-fetch": "^2.6.12",
+    "axios": "^1.9.0",
+    "commander": "^13.1.0",
+    "json-schema-to-typescript": "^15.0.4",
+    "node-fetch": "^3"
+  }
+}
