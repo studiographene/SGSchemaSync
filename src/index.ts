@@ -67,13 +67,15 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
     // 3. Iterate through tags and call generator
     for (const tagName in operationsByTag) {
-      console.log(`Generating files for tag: ${tagName}...`);
+      // Sanitize tag name for file path usage (lowercase, replace space/slash with dash)
+      const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
+      console.log(`Generating files for tag: ${tagName} (filename: ${sanitizedTagName})...`);
       const operations = operationsByTag[tagName];
       const { typesContent, functionsContent } = await generateFilesForTag(tagName, operations, spec);
 
-      // 4. Write generated files
-      const typesFilePath = path.join(typesOutputDir, `${tagName.toLowerCase()}.ts`);
-      const functionsFilePath = path.join(functionsOutputDir, `${tagName.toLowerCase()}.ts`);
+      // 4. Write generated files using sanitized name
+      const typesFilePath = path.join(typesOutputDir, `${sanitizedTagName}.ts`);
+      const functionsFilePath = path.join(functionsOutputDir, `${sanitizedTagName}.ts`);
 
       await fs.writeFile(typesFilePath, typesContent, "utf-8");
       console.log(`  -> Types written to ${typesFilePath}`);

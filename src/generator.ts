@@ -36,7 +36,9 @@ export async function generateFilesForTag(
   functionsContent += `import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';\n`;
   // Generate a safe identifier for the tag import
   const tagImportName = toTsIdentifier(tagName) + "Types";
-  functionsContent += `import * as ${tagImportName} from '../types/${tagName.toLowerCase()}';\n\n`;
+  // Use the sanitized tag name for the file path
+  const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
+  functionsContent += `import * as ${tagImportName} from \'../types/${sanitizedTagName}\';\n\n`;
 
   // --- Sample Implementation for GET /api/venues/{venueId} ---
   const sampleOpInfo = operations.find((op) => op.path === "/api/venues/{venueId}" && op.method === "get");
@@ -97,7 +99,7 @@ export async function generateFilesForTag(
     }
     functionString += ` */\n`;
     functionString += `export async function ${functionName}(\n  ${funcParamsString}\n`;
-    functionString += `): Promise<AxiosResponse<${tagImportName}.${actualResponseTypeName}>> {\n`; // Use actualResponseTypeName
+    functionString += `): Promise<AxiosResponse<${tagImportName}.${actualResponseTypeName}>> {\n`; // Use actualResponseTypeName & safe tagImportName
     functionString += `  const url = \`${urlPath}\`;\n`;
     functionString += `  const axiosConfig: AxiosRequestConfig = {\n`;
     functionString += `    method: '${method}',\n`;
