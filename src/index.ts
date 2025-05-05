@@ -24,18 +24,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
   console.log(`Base output directory: ${options.output}`);
   console.log(`Generate React Query hooks: ${options.reactQuery ? "Yes" : "No"}`);
 
-  // Define base output directories
   const baseOutputDir = path.resolve(process.cwd(), options.output);
-  const typesOutputDir = path.join(baseOutputDir, "types");
-  const functionsOutputDir = path.join(baseOutputDir, "functions");
-  const queryHooksOutputDir = path.join(baseOutputDir, "query-hooks");
-
-  // Ensure base directories exist
-  await fs.mkdir(typesOutputDir, { recursive: true });
-  await fs.mkdir(functionsOutputDir, { recursive: true });
-  if (options.reactQuery) {
-    await fs.mkdir(queryHooksOutputDir, { recursive: true });
-  }
 
   try {
     // 1. Load and parse
@@ -93,12 +82,17 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
     console.log(`Found operations grouped by tags: ${Object.keys(operationsByTag).join(", ")}`);
 
-    // 3. Iterate through tags and call generator (passing specToUse)
+    // Iterate through tags, generate content, and write files to tag-specific folders
     for (const tagName in operationsByTag) {
-      // Sanitize tag name for file path usage (lowercase, replace space/slash with dash)
       const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
-      console.log(`Generating files for tag: ${tagName} (filename: ${sanitizedTagName})...`);
+      console.log(`Generating files for tag: ${tagName} (folder: ${sanitizedTagName})...`);
       const operations = operationsByTag[tagName];
+
+      // --- Create the output directory for this specific tag ---
+      const tagOutputDir = path.join(baseOutputDir, sanitizedTagName);
+      await fs.mkdir(tagOutputDir, { recursive: true });
+
+      // Generate content (function signature remains the same)
       const { typesContent, functionsContent, hooksContent } = await generateFilesForTag(
         tagName,
         operations,
@@ -106,20 +100,34 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         options.reactQuery ?? false
       );
 
-      // 4. Write generated files using sanitized name
-      const typesFilePath = path.join(typesOutputDir, `${sanitizedTagName}.ts`);
-      const functionsFilePath = path.join(functionsOutputDir, `${sanitizedTagName}.ts`);
+      // --- Define file paths within the tag directory ---
+      const typesFilePath = path.join(tagOutputDir, "types.ts");
+      const functionsFilePath = path.join(tagOutputDir, "functions.ts");
+      const hooksFilePath = path.join(tagOutputDir, "hooks.ts");
+      const indexFilePath = path.join(tagOutputDir, "index.ts");
 
+      // --- Write the files ---
       await fs.writeFile(typesFilePath, typesContent, "utf-8");
       console.log(`  -> Types written to ${typesFilePath}`);
+
       await fs.writeFile(functionsFilePath, functionsContent, "utf-8");
       console.log(`  -> Functions written to ${functionsFilePath}`);
 
+      let hooksFileGenerated = false;
       if (options.reactQuery && hooksContent.trim()) {
-        const hooksFilePath = path.join(queryHooksOutputDir, `${sanitizedTagName}.ts`);
         await fs.writeFile(hooksFilePath, hooksContent, "utf-8");
         console.log(`  -> Query Hooks written to ${hooksFilePath}`);
+        hooksFileGenerated = true;
       }
+
+      // --- Generate and write the index.ts file ---
+      let indexContent = `export * from './types';\nexport * from './functions';\n`;
+      if (hooksFileGenerated) {
+        // Only export hooks if the file was actually generated
+        indexContent += `export * from './hooks';\n`;
+      }
+      await fs.writeFile(indexFilePath, indexContent, "utf-8");
+      console.log(`  -> Index file written to ${indexFilePath}`);
     }
 
     console.log(`Successfully generated API client files in ${baseOutputDir}`);

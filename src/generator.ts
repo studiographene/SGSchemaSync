@@ -32,7 +32,7 @@ export async function generateFilesForTag(
   const tagImportName = toTsIdentifier(tagName) + "Types";
   // Use the sanitized tag name for the file path
   const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
-  functionsContent += `import * as ${tagImportName} from '../types/${sanitizedTagName}';\n\n`;
+  functionsContent += `import * as ${tagImportName} from './types';\n\n`;
 
   const generatedTypeNames = new Set<string>(); // Track generated types for this tag
 
@@ -182,7 +182,7 @@ export async function generateFilesForTag(
       funcParamsList.push(`params?: ${tagImportName}.${actualParametersTypeName}`);
     }
     funcParamsList.push(`config?: AxiosRequestConfig`);
-    const funcParamsString = funcParamsList.join(",");
+    const funcParamsString = funcParamsList.join(",\n  ");
     const urlPath = path.replace(/{([^}]+)}/g, (match, paramName) => `$\{${toTsIdentifier(paramName)}\}`);
 
     let finalResponseTypeNameForSig: string;
@@ -346,8 +346,8 @@ export async function generateFilesForTag(
   if (reactQueryEnabled && hooksGenerated) {
     const queryImports = `import { useQuery, useMutation, UseQueryOptions, UseMutationOptions, QueryKey } from '@tanstack/react-query';\n`;
     const axiosErrorImport = `import { AxiosError } from 'axios';\n`;
-    const baseFunctionImport = `import * as API from '../functions/${sanitizedTagName}';\n`; // Import base functions from sibling functions dir
-    const typeImport = `import * as ${tagImportName} from '../types/${sanitizedTagName}';\n\n`;
+    const baseFunctionImport = `import * as API from './functions';\n`; // Import base functions from sibling functions dir
+    const typeImport = `import * as ${tagImportName} from './types';\n\n`;
     hooksContent = queryImports + axiosErrorImport + baseFunctionImport + typeImport + hooksContent;
 
     const hooksTopBannerText = `${tagName} API Query Hooks`;
