@@ -1,26 +1,10 @@
 import fs from "fs/promises";
 // import fetch from "node-fetch"; // Remove node-fetch import
 import axios from "axios"; // Import axios
+import { PackageConfig, defaultPackageConfig } from "./config";
 
 // Basic placeholder type - ideally, install and use a package like 'openapi-types'
 export type OpenAPISpec = any;
-
-// Package configuration for code generation
-export interface PackageConfig {
-  generateFunctionNames: string;
-  generateFunctions: boolean;
-  generateTypesNames: string;
-  baseURL: string;
-}
-
-// Default package configuration
-export const defaultPackageConfig: PackageConfig = {
-  generateFunctionNames: "{Method}{Endpoint}.ts",
-  generateFunctions: true,
-  generateTypesNames: "{Method}{Endpoint}.types.ts",
-  // Default to empty string - should be overridden by environment config
-  baseURL: "",
-};
 
 // Axios request configuration
 export interface RequestConfig {

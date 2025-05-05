@@ -4,9 +4,10 @@ import { loadAndParseSpec, OpenAPISpec } from "./parser";
 import { generateFilesForTag } from "./generator";
 import { OpenAPIV3 } from "openapi-types";
 import $RefParser from "@apidevtools/json-schema-ref-parser";
+import { PackageConfig } from "./config";
 
 export interface GeneratorOptions {
-  input: string;
+  packageConfig: Partial<PackageConfig>;
   output: string;
   reactQuery?: boolean;
 }
@@ -20,7 +21,6 @@ export interface OperationInfo {
 
 export async function runGenerator(options: GeneratorOptions): Promise<void> {
   console.log(`Starting API client generation...`);
-  console.log(`Input spec: ${options.input}`);
   console.log(`Base output directory: ${options.output}`);
   console.log(`Generate React Query hooks: ${options.reactQuery ? "Yes" : "No"}`);
 
@@ -39,7 +39,9 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
   try {
     // 1. Load and parse
-    const initialSpec: OpenAPISpec | OpenAPIV3.Document = await loadAndParseSpec(options.input);
+    const initialSpec: OpenAPISpec | OpenAPIV3.Document = await loadAndParseSpec({
+      packageConfig: options.packageConfig
+    });
 
     // --- TEMPORARY DEBUG Check --- (can be removed later)
     if (!initialSpec?.components?.schemas?.Invitation) {
