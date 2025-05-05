@@ -32,7 +32,6 @@
     "@tanstack/react-query": "^5.75.2",
     "@types/node": "^22.15.3",
     "nodemon": "^3.1.10",
-    "openapi-types": "^12.1.3",
     "prettier": "^3.5.3",
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
@@ -42,6 +41,7 @@
     "@apidevtools/json-schema-ref-parser": "^12.0.1",
     "axios": "^1.9.0",
     "commander": "^13.1.0",
-    "json-schema-to-typescript": "^15.0.4"
+    "json-schema-to-typescript": "^15.0.4",
+    "openapi-types": "^12.1.3"
   }
 }
