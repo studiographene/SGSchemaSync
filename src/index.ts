@@ -99,7 +99,8 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         tagName,
         operations,
         specToUse,
-        options.reactQuery ?? false
+        options.reactQuery ?? false,
+        options.packageConfig
       );
 
       // --- Define file paths within the tag directory ---
