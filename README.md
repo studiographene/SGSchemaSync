@@ -62,6 +62,44 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 *   `-i, --input <path_or_url>`: (Required) Path to a local OpenAPI JSON file or a URL pointing to one.
 *   `-o, --output <directory>`: (Required) The base output directory where the tag-based generated folders will be placed (relative to the current working directory).
 *   `--react-query`: (Optional) Generate TanStack Query hooks (`useQuery`/`useMutation`) in addition to the base Axios functions.
+*   `--config <path>`: (Optional) Path to a configuration file (e.g., `sg-schema-sync.config.ts`). This file can export configuration options to customize fetching the OpenAPI spec and potentially other aspects of generation.
+
+## Configuration File (Optional)
+
+You can provide advanced configuration options using a TypeScript (`.ts`) or JavaScript (`.js`) file specified with the `--config` flag. This file should export an object named `config` conforming to the `ParserConfig` type (imported from `sg-schema-sync`).
+
+This allows you to set options like the `baseURL` for fetching the spec, or customize request `timeout` and `headers`.
+
+**Example `sg-schema-sync.config.ts`:**
+
+```typescript
+import type { ParserConfig } from 'sg-schema-sync';
+
+export const config: ParserConfig = {
+  packageConfig: {
+    // Base URL for fetching the OpenAPI spec (overrides environment variables)
+    baseURL: 'https://api.example.com/openapi.json',
+    // Other package-related options can go here if added in the future
+  },
+  requestConfig: {
+    // Custom timeout for fetching the spec (milliseconds)
+    timeout: 15000, 
+    // Custom headers for fetching the spec
+    headers: {
+      'Authorization': 'Bearer YOUR_TOKEN', // Example: Add auth token if needed
+      'X-Custom-Header': 'SomeValue',
+    },
+  },
+};
+```
+
+**Configuration Precedence:**
+
+Currently, configuration options are resolved in the following order (highest priority first):
+1.  Command-line arguments (`-i`, `-o`, `--react-query`).
+2.  Configuration file (`--config`). Options within `packageConfig` and `requestConfig` defined here override defaults and environment variables (where applicable for `baseURL`).
+3.  Environment variables (e.g., for `baseURL` - specific variable names depend on implementation).
+4.  Default values.
 
 ## Generated File Structure
 
