@@ -2,8 +2,13 @@
 
 // src/cli.ts
 import { Command } from "commander";
-import { runGenerator, GeneratorOptions } from "./index"; // Import core logic
+import { runGenerator, GeneratorOptions as CoreGeneratorOptions } from "./index"; // Import core logic
 import packageJson from "../package.json"; // Import for version
+
+// Extend CoreGeneratorOptions for CLI specific flags
+interface CliGeneratorOptions extends CoreGeneratorOptions {
+  reactQuery?: boolean;
+}
 
 const program = new Command();
 
@@ -14,11 +19,14 @@ program
 
 program
   .requiredOption("-i, --input <path_or_url>", "Path or URL to the OpenAPI JSON specification")
-  .requiredOption("-o, --output <path>", "Output path for the generated TypeScript file (relative to CWD)");
+  .requiredOption("-o, --output <path>", "Output path for the generated TypeScript file (relative to CWD)")
+  // Add the react-query flag
+  .option("--react-query", "Generate TanStack Query (v4/v5) hooks");
 
 program.parse(process.argv);
 
-const options = program.opts<GeneratorOptions>();
+// Use the extended options type here
+const options = program.opts<CliGeneratorOptions>();
 
 runGenerator(options).catch((error) => {
   // console.error handled in runGenerator

@@ -14,8 +14,9 @@ import {
 export async function generateFilesForTag(
   tagName: string,
   operations: OperationInfo[],
-  spec: OpenAPIV3.Document
-): Promise<{ typesContent: string; functionsContent: string }> {
+  spec: OpenAPIV3.Document,
+  reactQueryEnabled: boolean
+): Promise<{ typesContent: string; functionsContent: string; hooksContent: string }> {
   // Create top-level banner for types file
   const typeTopBannerText = `${tagName} API Types`;
   const typeTopBanner = createBanner(typeTopBannerText);
@@ -31,11 +32,15 @@ export async function generateFilesForTag(
   const tagImportName = toTsIdentifier(tagName) + "Types";
   // Use the sanitized tag name for the file path
   const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
-  functionsContent += `import * as ${tagImportName} from '../types/${sanitizedTagName}';\n\n// TODO: Add function implementations here\n`; // Placeholder for functions
+  functionsContent += `import * as ${tagImportName} from '../types/${sanitizedTagName}';\n\n`;
 
   const generatedTypeNames = new Set<string>(); // Track generated types for this tag
 
   console.log(`  Processing ${operations.length} operations for tag: ${tagName}`);
+
+  // Initialize hooksContent
+  let hooksContent = "";
+  let hooksGenerated = false; // Track if any hooks are added for this tag
 
   for (const opInfo of operations) {
     const { operation, path, method } = opInfo;
@@ -231,8 +236,128 @@ export async function generateFilesForTag(
     functionString += `}\n`;
 
     functionsContent += functionString;
+
+    // --- Generate React Query Hooks (if enabled) ---
+    if (reactQueryEnabled) {
+      console.log(`    [RQ Enabled] Generating hook for ${functionName}`); // Log entry
+      let hookString = "";
+      const queryHookParamsList: string[] = [];
+      const pathParamNames = pathParams.map((p) => toTsIdentifier(p.name));
+      pathParams.forEach((p) => {
+        queryHookParamsList.push(`${toTsIdentifier(p.name)}: string`);
+      });
+      if (actualParametersTypeName) {
+        queryHookParamsList.push(`params?: ${tagImportName}.${actualParametersTypeName}`);
+      }
+      let finalResponseTypeNameForHook: string;
+      if (primaryResponseTypeGenerated) {
+        finalResponseTypeNameForHook =
+          primaryResponseTypeName === "void"
+            ? "void"
+            : primaryResponseTypeName
+              ? `${tagImportName}.${primaryResponseTypeName}`
+              : "any";
+      } else {
+        finalResponseTypeNameForHook = "any";
+      }
+
+      if (method === "get") {
+        // ... (useQuery generation logic) ...
+        const hookName = `use${functionName}`;
+        queryHookParamsList.push(
+          `options?: Omit<UseQueryOptions<${finalResponseTypeNameForHook}, AxiosError>, 'queryKey' | 'queryFn'>`
+        );
+        const queryKeyParts = [`'${sanitizedTagName}'`, `'${endpointBaseName}'`];
+        if (pathParamNames.length > 0) {
+          queryKeyParts.push(`{ ${pathParamNames.join(", ")} }`);
+        }
+        if (actualParametersTypeName) {
+          queryKeyParts.push("params");
+        }
+
+        hookString += `\n\n${createBanner(summary)}\n${createRouteBanner(method, path)}\n`;
+        hookString += `export const ${hookName} = (\n  ${queryHookParamsList.join(",\n  ")}\n) => {\n`;
+        hookString += `  const queryKey: QueryKey = [${queryKeyParts.join(", ")}];\n`;
+        hookString += `  return useQuery<${finalResponseTypeNameForHook}, AxiosError>({\n`;
+        hookString += `    queryKey,\n`;
+        hookString += `    queryFn: async () => {\n`;
+        const baseFuncArgsList: string[] = [...pathParamNames];
+        if (actualParametersTypeName) {
+          baseFuncArgsList.push("params");
+        }
+        hookString += `      const response = await API.${functionName}(${baseFuncArgsList.join(", ")});\n`;
+        hookString += `      return response.data;\n`;
+        hookString += `    },\n`;
+        hookString += `    ...options,\n`;
+        hookString += `  });\n`;
+        hookString += `};\n`;
+      } else {
+        // ... (useMutation generation logic) ...
+        const hookName = `use${functionName}`;
+        let mutationVariablesTypeParts: string[] = [];
+        pathParamNames.forEach((p) => mutationVariablesTypeParts.push(`${p}: string`));
+        if (actualRequestBodyTypeName) {
+          mutationVariablesTypeParts.push(`data: ${tagImportName}.${actualRequestBodyTypeName}`);
+        }
+        if (actualParametersTypeName) {
+          mutationVariablesTypeParts.push(`params?: ${tagImportName}.${actualParametersTypeName}`);
+        }
+        let mutationVariablesType = "void";
+        if (mutationVariablesTypeParts.length > 0) {
+          mutationVariablesType = `{ ${mutationVariablesTypeParts.join("; ")} }`;
+        }
+        const mutationHookParamsList = [
+          `options?: Omit<UseMutationOptions<${finalResponseTypeNameForHook}, AxiosError, ${mutationVariablesType}>, 'mutationFn'>`,
+        ];
+        hookString += `\n\n${createBanner(summary)}\n${createRouteBanner(method, path)}\n`;
+        hookString += `export const ${hookName} = (\n  ${mutationHookParamsList.join(",\n  ")}\n) => {\n`;
+        hookString += `  return useMutation<${finalResponseTypeNameForHook}, AxiosError, ${mutationVariablesType}>({\n`;
+        hookString += `    mutationFn: async (variables) => {\n`;
+        const baseFuncArgsList: string[] = [];
+        pathParamNames.forEach((p) => baseFuncArgsList.push(`variables.${p}`));
+        if (actualRequestBodyTypeName) {
+          baseFuncArgsList.push("variables.data");
+        }
+        if (actualParametersTypeName) {
+          baseFuncArgsList.push("variables.params");
+        }
+        hookString += `      const response = await API.${functionName}(${baseFuncArgsList.join(", ")});\n`;
+        hookString += `      return response.data;\n`;
+        hookString += `    },\n`;
+        hookString += `    ...options,\n`;
+        hookString += `  });\n`;
+        hookString += `};\n`;
+      }
+
+      console.log(`    [RQ] Generated hook string length: ${hookString.length}`); // Log hook string length
+      if (hookString.trim()) {
+        // Check if non-empty string generated
+        hooksContent += hookString;
+        hooksGenerated = true; // Mark that we added a hook for this tag file
+        console.log(`    [RQ] hooksGenerated set to true for ${functionName}`); // Log flag set
+      } else {
+        console.log(`    [RQ] No hook string generated for ${functionName}`); // Log if empty
+      }
+    }
   } // End loop through operations
 
+  // --- Add Imports to hooksContent if needed ---
+  console.log(`  [RQ Summary] Finished loop. hooksGenerated: ${hooksGenerated}`); // Log final flag state
+  if (reactQueryEnabled && hooksGenerated) {
+    const queryImports = `import { useQuery, useMutation, UseQueryOptions, UseMutationOptions, QueryKey } from '@tanstack/react-query';\n`;
+    const axiosErrorImport = `import { AxiosError } from 'axios';\n`;
+    const baseFunctionImport = `import * as API from '../functions/${sanitizedTagName}';\n`; // Import base functions from sibling functions dir
+    const typeImport = `import * as ${tagImportName} from '../types/${sanitizedTagName}';\n\n`;
+    hooksContent = queryImports + axiosErrorImport + baseFunctionImport + typeImport + hooksContent;
+
+    const hooksTopBannerText = `${tagName} API Query Hooks`;
+    const hooksTopBanner = createBanner(hooksTopBannerText);
+    hooksContent = `${hooksTopBanner}\n\n` + hooksContent;
+    console.log(`  [RQ Summary] Added imports/banner. Final hooksContent length: ${hooksContent.length}`); // Log final content length
+  } else if (reactQueryEnabled) {
+    console.log("  [RQ Summary] React Query enabled, but no hooks were generated for this tag."); // Log if no hooks generated
+  }
+
   // Ensure the function returns the object
-  return { typesContent, functionsContent };
+  return { typesContent, functionsContent, hooksContent };
 }

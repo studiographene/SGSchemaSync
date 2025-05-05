@@ -5,6 +5,7 @@ A CLI tool to generate type-safe TypeScript API client code from an OpenAPI v3 s
 This tool parses an OpenAPI JSON file (local or remote) and generates:
 *   TypeScript interfaces corresponding to request bodies, parameters (query), and responses.
 *   Axios-based functions for calling each API endpoint defined in the spec.
+*   Optionally, TanStack Query (v4/v5) hooks (`useQuery`, `useMutation`) wrapping the Axios functions.
 
 Files are organized by the first `tag` associated with each endpoint in the OpenAPI specification.
 
@@ -31,21 +32,27 @@ pnpm generate-api-client -i <path_or_url_to_openapi.json> -o ./src/api/generated
 **Options:**
 
 *   `-i, --input <path_or_url>`: (Required) Path to a local OpenAPI JSON file or a URL pointing to one.
-*   `-o, --output <directory>`: (Required) The base output directory where the generated files will be placed (relative to the current working directory). The tool will create `types` and `functions` subdirectories within this path.
+*   `-o, --output <directory>`: (Required) The base output directory where the generated files will be placed (relative to the current working directory). The tool will create `types`, `functions`, and optionally `query-hooks` subdirectories within this path.
+*   `--react-query`: (Optional) Generate TanStack Query hooks (`useQuery`/`useMutation`) in addition to the base Axios functions.
 
 ## Generated File Structure
 
-The tool generates files based on the API tags found in the OpenAPI specification. For a tag named `Users`, it would generate:
+With `--react-query` enabled:
 
 ```
 <output_directory>/  
-├── types/            # Directory for generated TypeScript interfaces
-│   ├── users.ts        # Types related to the 'Users' tag
-│   └── ...           # Other type files based on other tags
-└── functions/        # Directory for generated API client functions
-    ├── users.ts        # Functions related to the 'Users' tag
-    └── ...           # Other function files based on other tags
+├── types/            
+│   ├── users.ts        
+│   └── ...           
+├── functions/        
+│   ├── users.ts        
+│   └── ...           
+└── query-hooks/      # Optional: Contains TanStack Query hooks
+    ├── users.ts        
+    └── ...           
 ```
+
+Without `--react-query`, the `query-hooks` directory is not created.
 
 *Tag names are sanitized for filenames (lowercase, spaces/slashes replaced with hyphens).* 
 
@@ -99,6 +106,71 @@ async function fetchUser(userId: string) {
 }
 ```
 
+### Query Hooks (`<output_directory>/query-hooks/<tag>.ts`)
+
+*(Generated only if `--react-query` flag is used)*
+
+Contains TanStack Query (React Query) hooks wrapping the base Axios functions:
+
+*   **`useQuery` Hooks (for GET requests):**
+    *   Named like `use[FunctionName]` (e.g., `useUsersById_GET`).
+    *   Accept path parameters, an optional `params` object (if query parameters exist), and optional `UseQueryOptions`.
+    *   Automatically constructs a query key based on the tag, endpoint, path parameters, and query parameters.
+    *   The `queryFn` calls the base Axios function and returns `response.data`.
+*   **`useMutation` Hooks (for POST, PUT, PATCH, DELETE requests):**
+    *   Named like `use[FunctionName]` (e.g., `useUsers_POST`).
+    *   Accept optional `UseMutationOptions`.
+    *   The variables passed to the hook\'s `mutate` function should be an object containing required path parameters, the `data` payload (if applicable), and `params` (if applicable).
+    *   The `mutationFn` calls the base Axios function with the provided variables and returns `response.data`.
+
+**Dependencies:** If you use the `--react-query` flag, your project **must** have `@tanstack/react-query` installed:
+
+```bash
+pnpm add @tanstack/react-query
+# or
+yarn add @tanstack/react-query
+# or
+npm install @tanstack/react-query
+```
+
+**Example Usage of Generated Hooks:**
+
+```typescript
+import { useUsersById_GET } from \'./api/generated/query-hooks/users\';
+import { useUsers_POST } from \'./api/generated/query-hooks/users\';
+import type { Users_POST_Request } from \'./api/generated/types/users\';
+
+function UserProfile({ userId }: { userId: string }) {
+  const { data: user, isLoading, error } = useUsersById_GET(userId, undefined, { // No query params
+    // React Query options, e.g., staleTime
+    staleTime: 5 * 60 * 1000, 
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error loading user: {error.message}</div>;
+
+  return <div>User Name: {user?.name}</div>; // data is typed!
+}
+
+function CreateUserForm() {
+  const createUserMutation = useUsers_POST({
+    onSuccess: (newUser) => {
+      console.log(\'User created!\', newUser); // newUser is typed
+      // Invalidate user list query, etc.
+    },
+    onError: (error) => {
+       console.error(\'Failed to create user:\', error.message);
+    }
+  });
+
+  const handleSubmit = (formData: Users_POST_Request) => {
+    createUserMutation.mutate({ data: formData }); // Pass variables object
+  };
+
+  // ... render form ...
+}
+```
+
 ## Pitfalls & Known Issues
 
 *   **OpenAPI Specification Quality:** The quality of the generated code heavily depends on the correctness and completeness of the input OpenAPI specification.
@@ -107,6 +179,7 @@ async function fetchUser(userId: string) {
 *   **Parameter Handling:** Currently, only basic query parameter handling is implemented. Header, cookie, and complex path parameter serialization might not be fully supported.
 *   **Content Types:** Assumes `application/json` for request and response bodies. Other content types are not explicitly handled.
 *   **Authentication:** The tool does not automatically handle authentication methods defined in the spec. You need to pass necessary headers or configurations via the `config` parameter of the generated functions.
+*   **React Query Version:** Assumes TanStack Query v4 or v5 API compatibility.
 
 ---
 

@@ -8,6 +8,7 @@ import $RefParser from "@apidevtools/json-schema-ref-parser";
 export interface GeneratorOptions {
   input: string;
   output: string;
+  reactQuery?: boolean;
 }
 
 // Helper type for passing operation details to the generator
@@ -21,15 +22,20 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
   console.log(`Starting API client generation...`);
   console.log(`Input spec: ${options.input}`);
   console.log(`Base output directory: ${options.output}`);
+  console.log(`Generate React Query hooks: ${options.reactQuery ? "Yes" : "No"}`);
 
   // Define base output directories
   const baseOutputDir = path.resolve(process.cwd(), options.output);
   const typesOutputDir = path.join(baseOutputDir, "types");
   const functionsOutputDir = path.join(baseOutputDir, "functions");
+  const queryHooksOutputDir = path.join(baseOutputDir, "query-hooks");
 
   // Ensure base directories exist
   await fs.mkdir(typesOutputDir, { recursive: true });
   await fs.mkdir(functionsOutputDir, { recursive: true });
+  if (options.reactQuery) {
+    await fs.mkdir(queryHooksOutputDir, { recursive: true });
+  }
 
   try {
     // 1. Load and parse
@@ -93,7 +99,12 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
       console.log(`Generating files for tag: ${tagName} (filename: ${sanitizedTagName})...`);
       const operations = operationsByTag[tagName];
-      const { typesContent, functionsContent } = await generateFilesForTag(tagName, operations, specToUse);
+      const { typesContent, functionsContent, hooksContent } = await generateFilesForTag(
+        tagName,
+        operations,
+        specToUse,
+        options.reactQuery ?? false
+      );
 
       // 4. Write generated files using sanitized name
       const typesFilePath = path.join(typesOutputDir, `${sanitizedTagName}.ts`);
@@ -103,6 +114,12 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       console.log(`  -> Types written to ${typesFilePath}`);
       await fs.writeFile(functionsFilePath, functionsContent, "utf-8");
       console.log(`  -> Functions written to ${functionsFilePath}`);
+
+      if (options.reactQuery && hooksContent.trim()) {
+        const hooksFilePath = path.join(queryHooksOutputDir, `${sanitizedTagName}.ts`);
+        await fs.writeFile(hooksFilePath, hooksContent, "utf-8");
+        console.log(`  -> Query Hooks written to ${hooksFilePath}`);
+      }
     }
 
     console.log(`Successfully generated API client files in ${baseOutputDir}`);

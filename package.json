@@ -13,7 +13,7 @@
     "dev": "nodemon src/cli.ts",
     "start": "node dist/cli.js",
     "prepublishOnly": "pnpm build",
-    "test-tool": "rimraf test-output && pnpm build && node dist/cli.js -i https://dev.surveyapi.59club.studiographene.xyz/api/api-docs.json -o test-output"
+    "test-tool": "rimraf test-output && pnpm build && node dist/cli.js -i https://dev.surveyapi.59club.studiographene.xyz/api/api-docs.json -o test-output --react-query"
   },
   "keywords": [
     "api",
