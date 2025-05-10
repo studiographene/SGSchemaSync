@@ -249,7 +249,8 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
     if (formatWithPrettier) {
       try {
         console.log(`Formatting generated files with Prettier in ${baseOutputDir}...`);
-        let prettierCommand = `npx prettier --write "${baseOutputDir}/**/*.ts" "${baseOutputDir}/**/*.js" --log-level warn`;
+        // Only format .ts files as those are the only ones generated.
+        let prettierCommand = `npx prettier --write "${baseOutputDir}/**/*.ts" --log-level warn`;
         if (prettierConfigPath) {
           // Ensure the path is resolved correctly if it's relative
           const resolvedPrettierConfigPath = path.resolve(process.cwd(), prettierConfigPath);
