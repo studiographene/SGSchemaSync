@@ -107,7 +107,7 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
 *   `defaultClientFileSuffix: string`: (Default: `'sgClient.ts'`) Suffix for the auto-generated client file when `useDefaultRequester` is true. Example: `products.sgClient.ts`.
 *   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier. Can be overridden by the `--prettier` / `--no-prettier` CLI flags.
 *   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file. If not set, Prettier will attempt to find a configuration file as per its standard discovery mechanism (e.g., `.prettierrc` in the project). Can be overridden by the `--prettier-config-path` CLI flag.
-*   `customRequesterAdapterPath: string`: (Default: `'src/api/sgClientSetup.ts'`) When `useDefaultRequester` is `false`, this is the path for the custom requester adapter file. If a relative path is provided (e.g., `myClientAdapter.ts`), it will be created/looked for inside the main output directory (specified by `output` in config or `-o` in CLI). Absolute paths are used as-is.
+*   `customRequesterAdapterPath: string`: (Default: `'sgClientSetup.ts'`) When `useDefaultRequester` is `false`, this is the path for the custom requester adapter file. If a relative path is provided (e.g., `myClientAdapter.ts` or `adapters/customAdapter.ts`), it will be created/looked for inside the main output directory (specified by `output` in config or `-o` in CLI). Absolute paths are used as-is.
 *   `scaffoldRequesterAdapter: boolean`: (Default: `true`) When `useDefaultRequester` is `false`, if this is `true` and the file at `customRequesterAdapterPath` does not exist, the tool will generate a basic scaffold for it, including commented-out imports and instantiations for all generated API tags. This file will not be overwritten if it already exists.
 *   *(Other fields like `baseDir` also exist).*
 
@@ -122,8 +122,9 @@ module.exports = {
       generateHooks: true, // Generate TanStack Query hooks
       useDefaultRequester: false, // Set to false to use a custom requester
       // Settings for custom requester adapter (if useDefaultRequester is false):
-      customRequesterAdapterPath: 'src/api/myClientAdapter.ts', // Customize path if needed
-      scaffoldRequesterAdapter: true, // Auto-generate scaffold if adapter file doesn't exist
+      // customRequesterAdapterPath: 'myClientAdapter.ts', // Example: place adapter in output root
+      // customRequesterAdapterPath: 'adapters/myClientAdapter.ts', // Example: place in a subdir of output
+      scaffoldRequesterAdapter: true, // Auto-generate scaffold if adapter file doesn't exist (uses default path if not set above)
 
       defaultClientFileSuffix: 'Client.ts', // Only relevant if useDefaultRequester is true
       formatWithPrettier: true, // Explicitly set, though true is the default
@@ -251,8 +252,8 @@ Contains TypeScript interfaces for request bodies, parameters, and responses. (N
 1.  **Run `pnpm sg-schema-sync ...`**
     This generates `functions.ts` and `hooks.ts` (if `generateHooks:true`) containing factories in tag-specific subdirectories under your output path.
 2.  **Create or Complete your Requester Adapter:**
-    *   If using `scaffoldRequesterAdapter: true` (default) and the file specified by `customRequesterAdapterPath` (default: `src/api/sgClientSetup.ts`) doesn't exist, `sg-schema-sync` will create a scaffold file for you. This scaffold will include TODOs, a template for the adapter function, and commented-out imports and example instantiations for all your generated API tags and their operations.
-    *   Open this file (e.g., `src/api/sgClientSetup.ts` or your custom path). You **must** complete the TODOs: implement the `myCustomSGSyncRequester` function to call your project's existing API request function (mapping options and responses), and then uncomment and verify the import statements and factory instantiations for the APIs you wish to use.
+    *   If using `scaffoldRequesterAdapter: true` (default) and the file specified by `customRequesterAdapterPath` (default: `sgClientSetup.ts` - placed inside your main output directory) doesn't exist, `sg-schema-sync` will create a scaffold file for you. This scaffold will include TODOs, a template for the adapter function, and commented-out imports and example instantiations for all your generated API tags and their operations.
+    *   Open this file (e.g., `<output_dir>/sgClientSetup.ts` or your custom path). You **must** complete the TODOs: implement the `myCustomSGSyncRequester` function to call your project's existing API request function (mapping options and responses), and then uncomment and verify the import statements and factory instantiations for the APIs you wish to use.
     *   If the file already exists, or if scaffolding is disabled, you'll need to manually create or update it to import the factories and instantiate them with your custom `SGSyncRequester` implementation.
 
     ```typescript

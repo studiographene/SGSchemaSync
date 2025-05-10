@@ -29,7 +29,7 @@ export const defaultPackageConfig: PackageConfig = {
   defaultClientFileSuffix: "sgClient.ts",
   formatWithPrettier: true,
   prettierConfigPath: undefined,
-  customRequesterAdapterPath: "src/api/sgClientSetup.ts",
+  customRequesterAdapterPath: "sgClientSetup.ts",
   scaffoldRequesterAdapter: true,
 };
 

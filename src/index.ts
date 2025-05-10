@@ -297,13 +297,16 @@ function generateCustomAdapterScaffoldContent(
   const adapterFileDir = path.dirname(adapterFilePath);
 
   let importsSection = "// --- Import Factory Functions ---\n";
-  importsSection += "// TODO: Review and uncomment the imports for the API tags you want to use.\n";
   importsSection +=
     "// Adjust paths if your adapter file is not in the expected location relative to the output directory.\n\n";
 
   let instantiationsSection = "\n// --- Instantiate and Export API Clients ---\n";
-  instantiationsSection += "// TODO: Uncomment and complete the instantiations for the factories you've imported.\n";
   instantiationsSection += "// Create additional exports as needed for your project structure.\n\n";
+
+  // Helper to convert kebab-case to camelCase for import aliases
+  const toCamelCase = (str: string) => {
+    return str.toLowerCase().replace(/[^a-zA-Z0-9]+(.)/g, (m, chr) => chr.toUpperCase());
+  };
 
   for (const detail of tagDetails) {
     const targetTagFunctionsPath = path
@@ -314,14 +317,15 @@ function generateCustomAdapterScaffoldContent(
       relativePathToFunctions = "./" + relativePathToFunctions;
     }
 
-    const functionsImportAlias = `${detail.sanitizedTagName}FunctionFactories`;
-    importsSection += `// import * as ${functionsImportAlias} from '${relativePathToFunctions}';\n`;
+    const functionsImportAlias = `${toCamelCase(detail.sanitizedTagName)}FunctionFactories`;
+    importsSection += `import * as ${functionsImportAlias} from '${relativePathToFunctions}';\n`;
 
     instantiationsSection += `// --- ${detail.tagName} API Clients ---\n`;
     if (detail.functionFactoryNames.length > 0) {
-      const exampleFactoryFuncName = detail.functionFactoryNames[0];
-      const exampleFuncName = exampleFactoryFuncName.replace(/^create/, "").replace(/Function$/, "");
-      instantiationsSection += `// export const ${exampleFuncName} = ${functionsImportAlias}.${exampleFactoryFuncName}(myCustomSGSyncRequester);\n`;
+      detail.functionFactoryNames.forEach((factoryFuncName) => {
+        const exampleFuncName = factoryFuncName.replace(/^create/, "").replace(/Function$/, "");
+        instantiationsSection += `export const ${exampleFuncName} = ${functionsImportAlias}.${factoryFuncName}(myCustomSGSyncRequester);\n`;
+      });
     } else {
       instantiationsSection += `// No function factories generated for ${detail.tagName}.\n`;
     }
@@ -334,15 +338,17 @@ function generateCustomAdapterScaffoldContent(
       if (!relativePathToHooks.startsWith(".")) {
         relativePathToHooks = "./" + relativePathToHooks;
       }
-      const hooksImportAlias = `${detail.sanitizedTagName}HookFactories`;
-      importsSection += `// import * as ${hooksImportAlias} from '${relativePathToHooks}';\n`;
+      const hooksImportAlias = `${toCamelCase(detail.sanitizedTagName)}HookFactories`;
+      importsSection += `import * as ${hooksImportAlias} from '${relativePathToHooks}';\n`;
 
-      const exampleHookFactoryName = detail.hookFactoryNames[0];
-      const exampleHookName = exampleHookFactoryName.replace(/^create/, "").replace(/Hook$/, "");
-      instantiationsSection += `// export const ${exampleHookName} = ${hooksImportAlias}.${exampleHookFactoryName}(myCustomSGSyncRequester);\n`;
+      detail.hookFactoryNames.forEach((hookFactoryName) => {
+        const exampleHookName = hookFactoryName.replace(/^create/, "").replace(/Hook$/, "");
+        instantiationsSection += `export const ${exampleHookName} = ${hooksImportAlias}.${hookFactoryName}(myCustomSGSyncRequester);\n`;
+      });
     }
-    instantiationsSection += `// // TODO: Add other exports from the ${detail.tagName} API as needed\n\n`;
+    instantiationsSection += `// TODO: Add other exports from the ${detail.tagName} API as needed (if any were missed or if you have custom needs)\n\n`;
   }
+  importsSection += "\n"; // Add a newline after all imports
 
   // Ensure adapterFilePath is correctly escaped for use in the template literal string
   const escapedAdapterFilePath = adapterFilePath.replace(/\\\\/g, "/"); // Normalize to forward slashes for string embedding
@@ -355,7 +361,7 @@ import {
   SGSyncRequester,
   SGSyncRequesterOptions,
   SGSyncResponse,
-} from "sg-schema-sync"; // Assuming 'sg-schema-sync' is the installed package name
+} from "sg-schema-sync/requester-types"; // Corrected import path
 
 // TODO: 1. Import your project's actual HTTP request function and its types.
 // Example:
@@ -412,7 +418,7 @@ ${instantiationsSection}
 
 // Example of a placeholder export if you have no APIs instantiated yet.
 // Remove this once you have actual exports.
-export const placeholderApi = {};
+// export const placeholderApi = {}; // Commented out as we now generate actual exports
 
 // TODO: 3. After implementing the requester and uncommenting/adding exports above,
 //          ensure this file is imported and used appropriately in your application
