@@ -11,6 +11,8 @@ export interface PackageConfig {
   defaultClientFileSuffix?: string;
   formatWithPrettier?: boolean;
   prettierConfigPath?: string;
+  customRequesterAdapterPath?: string;
+  scaffoldRequesterAdapter?: boolean;
 }
 
 // Default package configuration
@@ -27,6 +29,8 @@ export const defaultPackageConfig: PackageConfig = {
   defaultClientFileSuffix: "sgClient.ts",
   formatWithPrettier: true,
   prettierConfigPath: undefined,
+  customRequesterAdapterPath: "src/api/sgClientSetup.ts",
+  scaffoldRequesterAdapter: true,
 };
 
 // Example of how to use this in a client project:

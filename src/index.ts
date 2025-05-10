@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import fsSync from "fs"; // For existsSync
 import path from "path";
 import { execSync } from "child_process";
 import { loadAndParseSpec, ParserConfig } from "./parser";
@@ -31,6 +32,16 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
   }
 
   const baseOutputDir = path.resolve(process.cwd(), options.output);
+
+  // To store details of generated tags for adapter scaffolding
+  const generatedTagDetails: Array<{
+    tagName: string;
+    sanitizedTagName: string;
+    functionFactoryNames: string[];
+    hookFactoryNames: string[];
+    hooksFileGenerated: boolean;
+    relativeDirFromProjectRoot: string; // Relative path to the tag directory from project root
+  }> = [];
 
   try {
     const initialSpec = await loadAndParseSpec(options.parserConfig);
@@ -99,6 +110,16 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         console.log(`  -> Hook factories written to ${hooksFilePath}`);
         hooksFileGenerated = true;
       }
+
+      // Store details for scaffolding
+      generatedTagDetails.push({
+        tagName,
+        sanitizedTagName,
+        functionFactoryNames,
+        hookFactoryNames,
+        hooksFileGenerated,
+        relativeDirFromProjectRoot: path.relative(process.cwd(), tagOutputDir), // Path to tag dir from project root
+      });
 
       // Generate default client file if configured
       if (options.parserConfig.packageConfig?.useDefaultRequester) {
@@ -182,6 +203,46 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       console.log(`  -> Index file written to ${indexFilePath}`);
     }
 
+    // --- Scaffold Custom Requester Adapter File (if configured and not exists) ---
+    const {
+      useDefaultRequester,
+      scaffoldRequesterAdapter,
+      customRequesterAdapterPath,
+      generateHooks: hooksGloballyEnabled, // To know if hooks were generally on
+    } = options.parserConfig.packageConfig || {};
+
+    if (!useDefaultRequester && scaffoldRequesterAdapter && customRequesterAdapterPath) {
+      const resolvedAdapterPath = path.resolve(process.cwd(), customRequesterAdapterPath);
+      const adapterDir = path.dirname(resolvedAdapterPath);
+
+      if (!fsSync.existsSync(resolvedAdapterPath)) {
+        try {
+          await fs.mkdir(adapterDir, { recursive: true }); // Ensure directory exists
+          const scaffoldContent = generateCustomAdapterScaffoldContent(
+            generatedTagDetails,
+            resolvedAdapterPath, // Pass adapter path to calculate relative paths to tag outputs
+            options.output, // Pass base output dir to help with relative path calculation
+            hooksGloballyEnabled ?? false
+          );
+          await fs.writeFile(resolvedAdapterPath, scaffoldContent, "utf-8");
+          console.log(`\n✅ Scaffold for custom requester adapter created at: ${resolvedAdapterPath}`);
+          console.log(`   Please complete the TODO sections in this file to integrate your project's HTTP client.`);
+        } catch (scaffoldError) {
+          console.warn(
+            `\n⚠️ WARNING: Failed to create scaffold for custom requester adapter at ${resolvedAdapterPath}.`
+          );
+          console.warn(scaffoldError);
+        }
+      } else {
+        console.log(
+          `\nℹ️ Custom requester adapter file already exists at ${resolvedAdapterPath}. No scaffold generated.`
+        );
+        console.log(
+          `   If you've added new API tags or operations, you may need to manually update this file with new factory imports and instantiations.`
+        );
+      }
+    }
+
     // Format generated files with Prettier if enabled
     const { formatWithPrettier, prettierConfigPath } = options.parserConfig.packageConfig || {};
 
@@ -212,4 +273,144 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
     console.error("Error generating client code:", error);
     throw error;
   }
+}
+
+// Helper function to generate scaffold content for the custom adapter
+function generateCustomAdapterScaffoldContent(
+  tagDetails: Array<{
+    tagName: string;
+    sanitizedTagName: string;
+    functionFactoryNames: string[];
+    hookFactoryNames: string[];
+    hooksFileGenerated: boolean;
+    relativeDirFromProjectRoot: string; // Path to tag output dir, relative to project root
+  }>,
+  adapterFilePath: string, // Absolute path to the adapter file itself
+  outputBaseDirFromConfig: string, // The 'output' config option (e.g., 'src/api/schema-sync')
+  hooksGloballyEnabled: boolean
+): string {
+  const adapterFileDir = path.dirname(adapterFilePath);
+
+  let importsSection = "// --- Import Factory Functions ---\n";
+  importsSection += "// TODO: Review and uncomment the imports for the API tags you want to use.\n";
+  importsSection +=
+    "// Adjust paths if your adapter file is not in the expected location relative to the output directory.\n\n";
+
+  let instantiationsSection = "\n// --- Instantiate and Export API Clients ---\n";
+  instantiationsSection += "// TODO: Uncomment and complete the instantiations for the factories you've imported.\n";
+  instantiationsSection += "// Create additional exports as needed for your project structure.\n\n";
+
+  for (const detail of tagDetails) {
+    const targetTagFunctionsPath = path
+      .join(outputBaseDirFromConfig, detail.sanitizedTagName, "functions")
+      .replace(/\\\\/g, "/");
+    let relativePathToFunctions = path.relative(adapterFileDir, targetTagFunctionsPath).replace(/\\\\/g, "/");
+    if (!relativePathToFunctions.startsWith(".")) {
+      relativePathToFunctions = "./" + relativePathToFunctions;
+    }
+
+    const functionsImportAlias = `${detail.sanitizedTagName}FunctionFactories`;
+    importsSection += `// import * as ${functionsImportAlias} from '${relativePathToFunctions}';\n`;
+
+    instantiationsSection += `// --- ${detail.tagName} API Clients ---\n`;
+    if (detail.functionFactoryNames.length > 0) {
+      const exampleFactoryFuncName = detail.functionFactoryNames[0];
+      const exampleFuncName = exampleFactoryFuncName.replace(/^create/, "").replace(/Function$/, "");
+      instantiationsSection += `// export const ${exampleFuncName} = ${functionsImportAlias}.${exampleFactoryFuncName}(myCustomSGSyncRequester);\n`;
+    } else {
+      instantiationsSection += `// No function factories generated for ${detail.tagName}.\n`;
+    }
+
+    if (hooksGloballyEnabled && detail.hooksFileGenerated && detail.hookFactoryNames.length > 0) {
+      const targetTagHooksPath = path
+        .join(outputBaseDirFromConfig, detail.sanitizedTagName, "hooks")
+        .replace(/\\\\/g, "/");
+      let relativePathToHooks = path.relative(adapterFileDir, targetTagHooksPath).replace(/\\\\/g, "/");
+      if (!relativePathToHooks.startsWith(".")) {
+        relativePathToHooks = "./" + relativePathToHooks;
+      }
+      const hooksImportAlias = `${detail.sanitizedTagName}HookFactories`;
+      importsSection += `// import * as ${hooksImportAlias} from '${relativePathToHooks}';\n`;
+
+      const exampleHookFactoryName = detail.hookFactoryNames[0];
+      const exampleHookName = exampleHookFactoryName.replace(/^create/, "").replace(/Hook$/, "");
+      instantiationsSection += `// export const ${exampleHookName} = ${hooksImportAlias}.${exampleHookFactoryName}(myCustomSGSyncRequester);\n`;
+    }
+    instantiationsSection += `// // TODO: Add other exports from the ${detail.tagName} API as needed\n\n`;
+  }
+
+  // Ensure adapterFilePath is correctly escaped for use in the template literal string
+  const escapedAdapterFilePath = adapterFilePath.replace(/\\\\/g, "/"); // Normalize to forward slashes for string embedding
+
+  return `// THIS IS AN AUTO-GENERATED SCAFFOLD FILE.
+// You must complete the TODOs to integrate it with your project.
+// This file will NOT be overwritten if it already exists.
+
+import {
+  SGSyncRequester,
+  SGSyncRequesterOptions,
+  SGSyncResponse,
+} from "sg-schema-sync"; // Assuming 'sg-schema-sync' is the installed package name
+
+// TODO: 1. Import your project's actual HTTP request function and its types.
+// Example:
+// import YOUR_PROJECT_REQUEST_FUNCTION from "@/services/apiService"; // Path to your API service
+// import type { YourRequestOptions, YourResponse } from "@/services/apiService"; // Types for your service
+
+${importsSection}
+
+// TODO: 2. Implement the adapter function.
+// This function maps sg-schema-sync's request options to your project's HTTP client options
+// and maps your project's response back to the format sg-schema-sync expects.
+const myCustomSGSyncRequester: SGSyncRequester = async <T = any>(
+  sgOptions: SGSyncRequesterOptions
+): Promise<SGSyncResponse<T>> => {
+  console.log("[myCustomSGSyncRequester] Called with options:", sgOptions);
+
+  // --- Adapt sgOptions to your HTTP client's expected input ---
+  // Example mapping (adjust vigorously to your project's needs):
+  // const projectRequestOptions /* : YourRequestOptions */ = {
+  //   method: sgOptions.method,
+  //   url: sgOptions.url, // sg-schema-sync provides the relative path (e.g., "/users/{id}")
+  //   data: sgOptions.data,
+  //   params: sgOptions.params,
+  //   headers: sgOptions.headers,
+  //   // authRequire: sgOptions.authRequire, // Your client might handle auth differently
+  //   // ... other necessary fields for your client
+  // };
+
+  // --- Make the call using your project's HTTP client ---
+  // Example:
+  // const projectResponse /* : YourResponse<T> */ = await YOUR_PROJECT_REQUEST_FUNCTION(projectRequestOptions);
+
+  // --- Adapt your HTTP client's response to SGSyncResponse<T> ---
+  // Example mapping:
+  // return {
+  //   data: projectResponse.data as T, // Or however your client structures the response body
+  //   status: projectResponse.status,
+  //   statusText: projectResponse.statusText,
+  //   headers: projectResponse.headers,
+  //   config: sgOptions, // Pass original sg-schema-sync options back
+  // };
+
+  // Placeholder implementation (REMOVE THIS AND IMPLEMENT ABOVE):
+  console.error(
+    \`TODO: Implement myCustomSGSyncRequester in ${escapedAdapterFilePath}\n\` +
+    "It needs to call your project's actual HTTP client and map options/responses."
+  );
+  return Promise.reject(
+    new Error("myCustomSGSyncRequester not implemented.")
+  ) as Promise<SGSyncResponse<T>>;
+};
+
+${instantiationsSection}
+
+// Example of a placeholder export if you have no APIs instantiated yet.
+// Remove this once you have actual exports.
+export const placeholderApi = {};
+
+// TODO: 3. After implementing the requester and uncommenting/adding exports above,
+//          ensure this file is imported and used appropriately in your application
+//          to access the instantiated API clients.
+`;
 }

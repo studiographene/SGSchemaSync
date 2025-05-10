@@ -17,6 +17,8 @@ interface CliGeneratorOptions extends CoreGeneratorOptions {
   config?: string;
   prettier?: boolean; // Added for CLI control over Prettier
   prettierConfigPath?: string; // Added for CLI Prettier config path
+  adapterPath?: string; // For customRequesterAdapterPath
+  scaffoldAdapter?: boolean; // For scaffoldRequesterAdapter
 }
 
 const program = new Command();
@@ -40,6 +42,14 @@ program
   .option(
     "--prettier-config-path <path>",
     "Path to a custom Prettier configuration file (overrides config file setting)"
+  )
+  .option(
+    "--adapter-path <path>",
+    "Path for the custom requester adapter file (e.g., src/api/sgClientSetup.ts). Used if useDefaultRequester is false."
+  )
+  .option(
+    "--scaffold-adapter / --no-scaffold-adapter",
+    "Enable or disable scaffolding of the custom requester adapter file if it doesn\'t exist. Used if useDefaultRequester is false."
   );
 
 program.parse(process.argv);
@@ -105,6 +115,16 @@ if (options.prettier !== undefined) {
 if (options.prettierConfigPath !== undefined) {
   finalPackageConfig.prettierConfigPath = options.prettierConfigPath;
   console.log(`Using Prettier config path from CLI: ${options.prettierConfigPath}`);
+}
+
+// Override Adapter settings from CLI if provided
+if (options.adapterPath !== undefined) {
+  finalPackageConfig.customRequesterAdapterPath = options.adapterPath;
+  console.log(`Custom requester adapter path set via CLI: ${options.adapterPath}`);
+}
+if (options.scaffoldAdapter !== undefined) {
+  finalPackageConfig.scaffoldRequesterAdapter = options.scaffoldAdapter;
+  console.log(`Scaffolding for custom requester adapter ${options.scaffoldAdapter ? "enabled" : "disabled"} via CLI.`);
 }
 
 // Validate that either input URL/path or a baseURL from config is provided
