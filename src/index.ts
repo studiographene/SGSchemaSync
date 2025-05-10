@@ -1,13 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
-import { loadAndParseSpec, OpenAPISpec } from "./parser";
+import { loadAndParseSpec, OpenAPISpec, ParserConfig } from "./parser";
 import { generateFilesForTag } from "./generator";
 import { OpenAPIV3 } from "openapi-types";
 import $RefParser from "@apidevtools/json-schema-ref-parser";
-import { PackageConfig } from "./config";
 
 export interface GeneratorOptions {
-  packageConfig: Partial<PackageConfig>;
+  parserConfig: ParserConfig;
   output: string;
   reactQuery?: boolean;
 }
@@ -28,9 +27,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
   try {
     // 1. Load and parse
-    const initialSpec: OpenAPISpec | OpenAPIV3.Document = await loadAndParseSpec({
-      packageConfig: options.packageConfig
-    });
+    const initialSpec: OpenAPISpec | OpenAPIV3.Document = await loadAndParseSpec(options.parserConfig);
 
     // --- TEMPORARY DEBUG Check --- (can be removed later)
     if (!initialSpec?.components?.schemas?.Invitation) {
@@ -100,7 +97,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         operations,
         specToUse,
         options.reactQuery ?? false,
-        options.packageConfig
+        options.parserConfig.packageConfig || {}
       );
 
       // --- Define file paths within the tag directory ---

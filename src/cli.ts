@@ -2,18 +2,24 @@
 
 // src/cli.ts
 import { Command } from "commander";
+import path from "path";
+import fs from "fs"; // Added for existsSync
 import { runGenerator, GeneratorOptions as CoreGeneratorOptions } from "./index"; // Import core logic
 import packageJson from "../package.json"; // Import for version
-import { clientConfig } from "./helpers/testconfig"; // Import default config
+// import { clientConfig } from "./helpers/testconfig"; // Commented out or removed
+import { ParserConfig } from "./parser"; // Added
+import { PackageConfig, defaultPackageConfig } from "./config"; // Added for default
 
 // Extend CoreGeneratorOptions for CLI specific flags
 interface CliGeneratorOptions extends CoreGeneratorOptions {
   reactQuery?: boolean;
-  input?: string;
+  input?: string; // This can serve as a fallback or override for baseURL
+  output: string; // Already requiredOption
   config?: string;
 }
 
 const program = new Command();
+const DEFAULT_CONFIG_FILENAME = "sg-schema-sync.config.js";
 
 program
   .name("sg-schema-sync")
@@ -23,31 +29,97 @@ program
   .version(packageJson.version); // Use version from package.json
 
 program
-  .option("-i, --input <path_or_url>", "Path or URL to the OpenAPI JSON specification")
+  .option(
+    "-i, --input <path_or_url>",
+    "Path or URL to the OpenAPI JSON specification (can be overridden by config file's baseURL)"
+  )
   .requiredOption("-o, --output <path>", "Output path for the generated TypeScript file (relative to CWD)")
-  // Add the react-query flag
   .option("--react-query", "Generate TanStack Query (v4/v5) hooks")
-  .option("--config <path>", "Path to configuration file");
+  .option("--config <path>", `Path to a JavaScript configuration file (default: ${DEFAULT_CONFIG_FILENAME} in CWD)`);
 
 program.parse(process.argv);
 
 // Use the extended options type here
 const options = program.opts<CliGeneratorOptions>();
 
-// Validate that either input or config is provided
-if (!options.input && !options.config) {
-  console.error("Error: Either --input or --config option must be provided");
+let userConfig: ParserConfig = {};
+let effectiveConfigPath: string | undefined = options.config;
+
+if (!effectiveConfigPath) {
+  const defaultConfigPath = path.resolve(process.cwd(), DEFAULT_CONFIG_FILENAME);
+  if (fs.existsSync(defaultConfigPath)) {
+    console.log(`No --config specified, found default config file: ${defaultConfigPath}`);
+    effectiveConfigPath = defaultConfigPath; // Use default path
+  } else {
+    console.log(`No --config specified and no default '${DEFAULT_CONFIG_FILENAME}' found in CWD.`);
+  }
+}
+
+if (effectiveConfigPath) {
+  try {
+    // Ensure effectiveConfigPath is absolute if it came from default discovery
+    // If it came from options.config, path.resolve will also make it absolute or handle it if already absolute.
+    const absoluteConfigPath = path.resolve(process.cwd(), effectiveConfigPath);
+    const loadedConfigModule = require(absoluteConfigPath);
+    if (loadedConfigModule && loadedConfigModule.config) {
+      userConfig = loadedConfigModule.config as ParserConfig;
+      console.log(`Loaded configuration from: ${absoluteConfigPath}`);
+    } else {
+      console.error(`Error: Configuration file at '${absoluteConfigPath}' must export a 'config' object.`);
+      process.exit(1);
+    }
+  } catch (e: any) {
+    console.error(`Error loading configuration file '${effectiveConfigPath}': ${e.message}`);
+    process.exit(1);
+  }
+}
+
+// Merge packageConfig from file with defaults, potentially overridden by input
+const finalPackageConfig: Partial<PackageConfig> = {
+  ...defaultPackageConfig, // Start with defaults
+  ...userConfig.packageConfig, // Apply config file's packageConfig
+};
+
+// If options.input is provided, it can be used as baseURL if not in config
+if (options.input) {
+  if (!finalPackageConfig.baseURL) {
+    console.log(`Using baseURL from --input: ${options.input}`);
+    finalPackageConfig.baseURL = options.input;
+  } else {
+    console.log(
+      `Using baseURL from config file: ${finalPackageConfig.baseURL}. (--input '${options.input}' is ignored for baseURL when config provides it).`
+    );
+  }
+}
+
+// Validate that either input URL/path or a baseURL from config is provided
+if (!finalPackageConfig.baseURL) {
+  console.error(
+    "Error: A baseURL must be provided either via the --input option, a config file, or the default 'sg-schema-sync.config.js'."
+  );
   process.exit(1);
 }
 
 // Prepare the generator options
+// The CoreGeneratorOptions interface will need to be updated to accept ParserConfig
+// For now, let's assume CoreGeneratorOptions is updated like this:
+// export interface GeneratorOptions {
+//   output: string;
+//   reactQuery?: boolean;
+//   parserConfig: ParserConfig;
+// }
+
 const generatorOptions: CoreGeneratorOptions = {
   output: options.output,
   reactQuery: options.reactQuery,
-  packageConfig: options.config ? clientConfig : { baseURL: options.input! }
+  // This structure assumes CoreGeneratorOptions will be changed
+  // to accept parserConfig which includes packageConfig and requestConfig
+  parserConfig: {
+    packageConfig: finalPackageConfig,
+    requestConfig: userConfig.requestConfig || {}, // Use requestConfig from file or default to empty
+  },
 };
 
 runGenerator(generatorOptions).catch((error) => {
-  // console.error handled in runGenerator
-  process.exit(1); // Exit with error code if runGenerator fails
+  process.exit(1);
 });

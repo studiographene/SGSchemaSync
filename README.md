@@ -59,47 +59,64 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 
 **Options:**
 
-*   `-i, --input <path_or_url>`: (Required) Path to a local OpenAPI JSON file or a URL pointing to one.
+*   `-i, --input <path_or_url>`: (Required) Path to a local OpenAPI JSON file or a URL pointing to one (this can serve as a fallback or override for `baseURL` if not specified in the config file).
 *   `-o, --output <directory>`: (Required) The base output directory where the tag-based generated folders will be placed (relative to the current working directory).
 *   `--react-query`: (Optional) Generate TanStack Query hooks (`useQuery`/`useMutation`) in addition to the base Axios functions.
-*   `--config <path>`: (Optional) Path to a configuration file (e.g., `sg-schema-sync.config.ts`). This file can export configuration options to customize fetching the OpenAPI spec and potentially other aspects of generation.
+*   `--config <path>`: (Optional) Path to a JavaScript configuration file (e.g., `sg-schema-sync.config.js`). If not provided, the tool will automatically look for `sg-schema-sync.config.js` in the current working directory. This file can export configuration options to customize fetching the OpenAPI spec and other aspects of generation.
 
 ## Configuration File (Optional)
 
-You can provide advanced configuration options using a TypeScript (`.ts`) or JavaScript (`.js`) file specified with the `--config` flag. This file should export an object named `config` conforming to the `ParserConfig` type (imported from `sg-schema-sync`).
+You can provide advanced configuration options using a JavaScript file (e.g., `sg-schema-sync.config.js`). If a path is specified with the `--config` flag, that file will be used. Otherwise, the tool will automatically look for `sg-schema-sync.config.js` in the root of your project. This file should export an object that has a `config` property, which in turn conforms to the `ParserConfig` structure (primarily `packageConfig` and `requestConfig`).
 
-This allows you to set options like the `baseURL` for fetching the spec, or customize request `timeout` and `headers`.
+This allows you to set options like the `baseURL` for fetching the spec, customize request `timeout` and `headers`, and override default naming conventions for generated functions, types, and hooks.
 
-**Example `sg-schema-sync.config.ts`:**
+**Example `sg-schema-sync.config.js`:**
 
-```typescript
-import type { ParserConfig } from 'sg-schema-sync';
+```javascript
+// sg-schema-sync.config.js
 
-export const config: ParserConfig = {
-  packageConfig: {
-    // Base URL for fetching the OpenAPI spec (overrides environment variables)
-    baseURL: 'https://api.example.com/openapi.json',
-    // Other package-related options can go here if added in the future
-  },
-  requestConfig: {
-    // Custom timeout for fetching the spec (milliseconds)
-    timeout: 15000, 
-    // Custom headers for fetching the spec
-    headers: {
-      'Authorization': 'Bearer YOUR_TOKEN', // Example: Add auth token if needed
-      'X-Custom-Header': 'SomeValue',
+// The 'config' object should adhere to the ParserConfig structure internally.
+// ParserConfig = { packageConfig?: Partial<PackageConfig>, requestConfig?: Partial<RequestConfig> }
+// PackageConfig includes fields like: baseURL, generateFunctions, generateHooks, 
+// generateFunctionNames, generateTypesNames, generateHooksNames, baseDir.
+
+module.exports = {
+  config: { 
+    packageConfig: {
+      // Base URL for fetching the OpenAPI spec (overrides environment variables and --input for baseURL)
+      baseURL: 'https://api.example.com/openapi.json',
+      
+      // Optional: Override default naming conventions (examples)
+      // generateFunctionNames: "api{Method}{Endpoint}", 
+      // generateTypesNames: "{Method}{Endpoint}Data",
+      // generateHooksNames: "use{Endpoint}{Method}Hook",
+
+      // Optional: Control generation of functions/hooks (booleans)
+      // generateFunctions: true, // default
+      // generateHooks: true, // default, only applies if --react-query is also true
     },
-  },
+    requestConfig: {
+      // Custom timeout for fetching the spec (milliseconds)
+      timeout: 15000, 
+      // Custom headers for fetching the spec
+      headers: {
+        'Authorization': 'Bearer YOUR_TOKEN', // Example: Add auth token if needed
+        'X-Custom-Header': 'SomeValue',
+      },
+    },
+  }
 };
 ```
 
 **Configuration Precedence:**
 
-Currently, configuration options are resolved in the following order (highest priority first):
-1.  Command-line arguments (`-i`, `-o`, `--react-query`).
-2.  Configuration file (`--config`). Options within `packageConfig` and `requestConfig` defined here override defaults and environment variables (where applicable for `baseURL`).
-3.  Environment variables (e.g., for `baseURL` - specific variable names depend on implementation).
-4.  Default values.
+Configuration options are resolved in the following order (highest priority first):
+1.  Explicit command-line arguments (`-o`, `--react-query`).
+2.  Values from the configuration file (e.g., `sg-schema-sync.config.js`), if found. This includes `packageConfig` (like `baseURL`, naming templates) and `requestConfig`.
+3.  The `--input <path_or_url>` argument serves as a fallback for `baseURL` if it's not defined in the configuration file.
+4.  Default values within the tool (for naming templates, `generateFunctions`, `generateHooks`, default `requestConfig` settings).
+
+Environment variables are not currently implemented for configuration.
 
 ## Generated File Structure
 
