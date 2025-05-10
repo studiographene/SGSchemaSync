@@ -23,7 +23,9 @@ export interface OperationInfo {
 export async function runGenerator(options: GeneratorOptions): Promise<void> {
   console.log(`Starting API client generation...`);
   console.log(`Base output directory: ${options.output}`);
-  console.log(`Generate React Query hooks: ${options.reactQuery ? "Yes" : "No"}`);
+  console.log(
+    `Generate React Query hooks (controlled by 'generateHooks' in config): ${options.reactQuery ? "Yes" : "No"}`
+  );
   if (options.parserConfig.packageConfig?.useDefaultRequester) {
     console.log(`Default requester client file will be generated.`);
   }

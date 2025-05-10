@@ -12,7 +12,6 @@ import { PackageConfig, defaultPackageConfig } from "./config"; // Added for def
 
 // Extend CoreGeneratorOptions for CLI specific flags
 interface CliGeneratorOptions extends CoreGeneratorOptions {
-  reactQuery?: boolean;
   input?: string; // This can serve as a fallback or override for baseURL
   output: string; // Already requiredOption
   config?: string;
@@ -36,7 +35,6 @@ program
     "Path or URL to the OpenAPI JSON specification (can be overridden by config file's baseURL)"
   )
   .requiredOption("-o, --output <path>", "Output path for the generated TypeScript file (relative to CWD)")
-  .option("--react-query", "Generate TanStack Query (v4/v5) hooks")
   .option("--config <path>", `Path to a JavaScript configuration file (default: ${DEFAULT_CONFIG_FILENAME} in CWD)`)
   .option("--prettier / --no-prettier", "Enable or disable Prettier formatting (overrides config file setting)")
   .option(
@@ -128,9 +126,9 @@ if (!finalPackageConfig.baseURL) {
 
 const generatorOptions: CoreGeneratorOptions = {
   output: options.output,
-  reactQuery: options.reactQuery,
-  // This structure assumes CoreGeneratorOptions will be changed
-  // to accept parserConfig which includes packageConfig and requestConfig
+  // reactQuery is now determined by packageConfig.generateHooks
+  // The GeneratorOptions interface still expects reactQuery, so we derive it.
+  reactQuery: finalPackageConfig.generateHooks,
   parserConfig: {
     packageConfig: finalPackageConfig,
     requestConfig: userConfig.requestConfig || {}, // Use requestConfig from file or default to empty

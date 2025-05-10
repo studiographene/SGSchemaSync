@@ -16,7 +16,7 @@ SGSchema-Sync now employs a **factory-based approach** for generating API functi
 
 1.  **Core Generation (Factories):**
     *   `functions.ts`: Contains factory functions (e.g., `createGetProductFunction(requester)`) for each API operation. These factories take an `SGSyncRequester` instance (see below) and return an actual async function to call the API.
-    *   `hooks.ts`: (If `--react-query` is enabled) Contains factory functions (e.g., `createUseGetProductHook(requester)`) for TanStack Query hooks. These also take an `SGSyncRequester`.
+    *   `hooks.ts`: (If `generateHooks: true` in config) Contains factory functions (e.g., `createUseGetProductHook(requester)`) for TanStack Query hooks. These also take an `SGSyncRequester`.
     *   `types.ts`: Contains all TypeScript request/response types.
 
 2.  **Requester Abstraction (`SGSyncRequester`):**
@@ -82,7 +82,6 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 
 *   `-i, --input <path_or_url>`: (Required) Path to a local OpenAPI JSON file or a URL pointing to one (this can serve as a fallback or override for `baseURL` if not specified in the config file).
 *   `-o, --output <directory>`: (Required) The base output directory where the tag-based generated folders will be placed (relative to the current working directory).
-*   `--react-query`: (Optional) Generate TanStack Query hooks (`useQuery`/`useMutation`) in addition to the base Axios functions.
 *   `--config <path>`: (Optional) Path to a JavaScript configuration file (e.g., `sg-schema-sync.config.js`). If not provided, the tool will automatically look for `sg-schema-sync.config.js` in the current working directory. This file can export configuration options to customize fetching the OpenAPI spec and other aspects of generation.
 *   `--prettier / --no-prettier`: (Optional) Enable or disable Prettier formatting for the generated files. Defaults to enabled. This overrides the `formatWithPrettier` setting in the config file.
 *   `--prettier-config-path <path>`: (Optional) Path to a custom Prettier configuration file (e.g., `.prettierrc.json`, `prettier.config.js`). If provided, this overrides the `prettierConfigPath` setting in the config file and Prettier's default config discovery.
@@ -98,13 +97,14 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
 *   `generateFunctionNames: string`: Template for generated function names (e.g., `{method}{Endpoint}`). Default: `{method}{Endpoint}`.
 *   `generateTypesNames: string`: Template for generated type names. Default: `{Method}{Endpoint}Types`.
 *   `generateHooksNames: string`: Template for generated hook names. Default: `use{Method}{Endpoint}`.
+*   `generateHooks: boolean`: (Default: `true`) Controls whether TanStack Query (v4/v5) hook factory functions are generated in `hooks.ts` files.
 *   `useDefaultRequester: boolean`: (Default: `false`)
     *   If `true`, a client file (e.g., `[tagName].sgClient.ts`) is generated for each tag, using a built-in default requester. This provides ready-to-use functions and hooks.
     *   If `false`, only factory functions are generated, and you provide your own requester implementation.
 *   `defaultClientFileSuffix: string`: (Default: `'sgClient.ts'`) Suffix for the auto-generated client file when `useDefaultRequester` is true. Example: `products.sgClient.ts`.
 *   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier. Can be overridden by the `--prettier` / `--no-prettier` CLI flags.
 *   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file. If not set, Prettier will attempt to find a configuration file as per its standard discovery mechanism (e.g., `.prettierrc` in the project). Can be overridden by the `--prettier-config-path` CLI flag.
-*   *(Other fields like `generateFunctions`, `generateHooks`, `baseDir` also exist).*
+*   *(Other fields like `generateFunctions`, `baseDir` also exist).*
 
 **Example `sg-schema-sync.config.js`:**
 ```javascript
@@ -113,6 +113,7 @@ module.exports = {
   config: {
     packageConfig: {
       baseURL: 'https://api.example.com/v1',
+      generateHooks: true, // Generate TanStack Query hooks
       useDefaultRequester: true, // Generate a client file with default requester
       defaultClientFileSuffix: 'Client.ts', // e.g., usersClient.ts
       formatWithPrettier: true, // Explicitly set, though true is the default
@@ -132,7 +133,7 @@ module.exports = {
 ```
 
 **Configuration Precedence:** (Simplified)
-1.  CLI arguments (e.g., `-o`, `--react-query`, `--prettier`, `--prettier-config-path`).
+1.  CLI arguments (e.g., `-o`, `--config`, `--prettier`, `--prettier-config-path`).
 2.  `sg-schema-sync.config.js` values.
 3.  `--input` (as fallback for `baseURL`).
 4.  Internal defaults.
@@ -166,7 +167,7 @@ Contains TypeScript interfaces for request bodies, parameters, and responses. (N
 *   **`SGSyncRequester`, `SGSyncRequesterOptions`, `SGSyncResponse`**: These crucial types define the contract for the requester mechanism. They are exported by the `sg-schema-sync` package (or available locally) for you to implement a custom requester.
 
 ### 3. `hooks.ts` (React Query Factories)
-*(Generated only if `--react-query` is used)*
+*(Generated only if `generateHooks: true` in config)*
 *   Exports **factory functions** for TanStack Query hooks, e.g., `export const createUseGetUserByIdHook = (requester: SGSyncRequester) => { /* returns hook */ };`
 *   Each factory takes an `SGSyncRequester`.
 *   The returned hook internally uses the corresponding function factory (e.g., `createGetUserByIdFunction`) to get an API call function, then uses it in `queryFn` or `mutationFn`.
@@ -302,7 +303,7 @@ Contains TypeScript interfaces for request bodies, parameters, and responses. (N
 
 ## Dependencies
 
-*   `@tanstack/react-query`: (Required by **your project** if you enable `--react-query` and use the generated hooks).
+*   `@tanstack/react-query`: (Required by **your project** if you set `generateHooks: true` in your config and use the generated hooks).
 *   `axios`: (A dependency of `sg-schema-sync` itself for its default requester and spec fetching).
 
 ## Pitfalls & Known Issues
