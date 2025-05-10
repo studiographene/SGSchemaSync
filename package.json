@@ -8,6 +8,24 @@
   "bin": {
     "sg-schema-sync": "dist/cli.js"
   },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./requester-types": {
+      "import": "./dist/requester-types.js",
+      "require": "./dist/requester-types.js",
+      "types": "./dist/requester-types.d.ts"
+    },
+    "./default-requester": {
+      "import": "./dist/default-requester.js",
+      "require": "./dist/default-requester.js",
+      "types": "./dist/default-requester.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "rimraf dist && tsc",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
