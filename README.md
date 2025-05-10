@@ -1,13 +1,34 @@
-# sg-schema-sync
+# SGSchema-Sync
 
 A CLI tool to generate type-safe TypeScript API client code from an OpenAPI v3 specification.
 
 This tool parses an OpenAPI JSON file (local or remote) and generates:
-*   TypeScript interfaces corresponding to request bodies, parameters (query), and responses.
-*   Axios-based functions for calling each API endpoint defined in the spec.
-*   Optionally, TanStack Query (v4/v5) hooks (`useQuery`, `useMutation`) wrapping the Axios functions.
+*   TypeScript interfaces for request bodies, parameters, and responses.
+*   **Factory functions** for creating API call functions.
+*   Optionally, **factory functions** for TanStack Query (v4/v5) hooks.
+*   An optional, auto-generated **default client file** that uses a built-in requester for immediate use.
 
 Files are organized into **tag-based directories**, where the tag is determined by the first `tag` associated with each endpoint in the OpenAPI specification.
+
+## Key Features & Approach
+
+SGSchema-Sync now employs a **factory-based approach** for generating API functions and hooks. This provides flexibility for integration into various project structures:
+
+1.  **Core Generation (Factories):**
+    *   `functions.ts`: Contains factory functions (e.g., `createGetProductFunction(requester)`) for each API operation. These factories take an `SGSyncRequester` instance (see below) and return an actual async function to call the API.
+    *   `hooks.ts`: (If `--react-query` is enabled) Contains factory functions (e.g., `createUseGetProductHook(requester)`) for TanStack Query hooks. These also take an `SGSyncRequester`.
+    *   `types.ts`: Contains all TypeScript request/response types.
+
+2.  **Requester Abstraction (`SGSyncRequester`):**
+    *   The generated factories depend on a `SGSyncRequester` function type. This function is responsible for making the actual HTTP request.
+    *   Your project can provide its own implementation of this requester, adapting to your existing API service layer or preferred HTTP client.
+    *   The `SGSyncRequester`, `SGSyncRequesterOptions`, and `SGSyncResponse` types are importable from the `sg-schema-sync` package (once published and installed) or will be available alongside generated code for local use.
+
+3.  **Default Client (Optional Quick Start):**
+    *   If configured (`useDefaultRequester: true` in `sg-schema-sync.config.js`), the tool generates an additional file per tag (e.g., `products.sgClient.ts`).
+    *   This file uses a **built-in default requester** (based on Axios/Fetch) provided by `sg-schema-sync`.
+    *   It automatically instantiates all function and hook factories, exporting ready-to-use API functions and hooks.
+    *   This is ideal for new projects or for quickly getting started.
 
 ## Installation
 
@@ -64,177 +85,222 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 *   `--react-query`: (Optional) Generate TanStack Query hooks (`useQuery`/`useMutation`) in addition to the base Axios functions.
 *   `--config <path>`: (Optional) Path to a JavaScript configuration file (e.g., `sg-schema-sync.config.js`). If not provided, the tool will automatically look for `sg-schema-sync.config.js` in the current working directory. This file can export configuration options to customize fetching the OpenAPI spec and other aspects of generation.
 
-## Configuration File (Optional)
+## Configuration File (`sg-schema-sync.config.js`)
 
-You can provide advanced configuration options using a JavaScript file (e.g., `sg-schema-sync.config.js`). If a path is specified with the `--config` flag, that file will be used. Otherwise, the tool will automatically look for `sg-schema-sync.config.js` in the root of your project. This file should export an object that has a `config` property, which in turn conforms to the `ParserConfig` structure (primarily `packageConfig` and `requestConfig`).
+Provide advanced options via a JavaScript file (default: `sg-schema-sync.config.js` in your project root, or specify with `--config`).
+It should export a `config` object: `module.exports = { config: { /* ... */ } };`
 
-This allows you to set options like the `baseURL` for fetching the spec, customize request `timeout` and `headers`, and override default naming conventions for generated functions, types, and hooks.
+**`config.packageConfig` options:**
+
+*   `baseURL: string`: Base URL for the API (used by the default requester or if `--input` is not a full URL).
+*   `generateFunctionNames: string`: Template for generated function names (e.g., `{method}{Endpoint}`). Default: `{method}{Endpoint}`.
+*   `generateTypesNames: string`: Template for generated type names. Default: `{Method}{Endpoint}Types`.
+*   `generateHooksNames: string`: Template for generated hook names. Default: `use{Method}{Endpoint}`.
+*   `useDefaultRequester: boolean`: (Default: `false`)
+    *   If `true`, a client file (e.g., `[tagName].sgClient.ts`) is generated for each tag, using a built-in default requester. This provides ready-to-use functions and hooks.
+    *   If `false`, only factory functions are generated, and you provide your own requester implementation.
+*   `defaultClientFileSuffix: string`: (Default: `'sgClient.ts'`) Suffix for the auto-generated client file when `useDefaultRequester` is true. Example: `products.sgClient.ts`.
+*   *(Other fields like `generateFunctions`, `generateHooks`, `baseDir` also exist).*
 
 **Example `sg-schema-sync.config.js`:**
-
 ```javascript
 // sg-schema-sync.config.js
-
-// The 'config' object should adhere to the ParserConfig structure internally.
-// ParserConfig = { packageConfig?: Partial<PackageConfig>, requestConfig?: Partial<RequestConfig> }
-// PackageConfig includes fields like: baseURL, generateFunctions, generateHooks, 
-// generateFunctionNames, generateTypesNames, generateHooksNames, baseDir.
-
 module.exports = {
-  config: { 
+  config: {
     packageConfig: {
-      // Base URL for fetching the OpenAPI spec (overrides environment variables and --input for baseURL)
-      baseURL: 'https://api.example.com/openapi.json',
-      
-      // Optional: Override default naming conventions (examples)
-      // generateFunctionNames: "api{Method}{Endpoint}", 
-      // generateTypesNames: "{Method}{Endpoint}Data",
-      // generateHooksNames: "use{Endpoint}{Method}Hook",
+      baseURL: 'https://api.example.com/v1',
+      useDefaultRequester: true, // Generate a client file with default requester
+      defaultClientFileSuffix: 'Client.ts', // e.g., usersClient.ts
 
-      // Optional: Control generation of functions/hooks (booleans)
-      // generateFunctions: true, // default
-      // generateHooks: true, // default, only applies if --react-query is also true
+      // Optional: Override default naming conventions
+      // generateFunctionNames: "call{Endpoint}{method}",
+      // generateTypesNames: "{Method}{Endpoint}Schema",
+      // generateHooksNames: "fetch{Endpoint}{Method}Hook",
     },
-    requestConfig: {
-      // Custom timeout for fetching the spec (milliseconds)
-      timeout: 15000, 
-      // Custom headers for fetching the spec
-      headers: {
-        'Authorization': 'Bearer YOUR_TOKEN', // Example: Add auth token if needed
-        'X-Custom-Header': 'SomeValue',
-      },
+    requestConfig: { // Passed to the spec fetching request, not the generated client by default
+      timeout: 10000,
+      headers: { 'X-API-KEY': 'your-key-for-spec-fetching' },
     },
   }
 };
 ```
 
-**Configuration Precedence:**
-
-Configuration options are resolved in the following order (highest priority first):
-1.  Explicit command-line arguments (`-o`, `--react-query`).
-2.  Values from the configuration file (e.g., `sg-schema-sync.config.js`), if found. This includes `packageConfig` (like `baseURL`, naming templates) and `requestConfig`.
-3.  The `--input <path_or_url>` argument serves as a fallback for `baseURL` if it's not defined in the configuration file.
-4.  Default values within the tool (for naming templates, `generateFunctions`, `generateHooks`, default `requestConfig` settings).
-
-Environment variables are not currently implemented for configuration.
+**Configuration Precedence:** (Simplified)
+1.  CLI arguments (e.g., `-o`, `--react-query`).
+2.  `sg-schema-sync.config.js` values.
+3.  `--input` (as fallback for `baseURL`).
+4.  Internal defaults.
 
 ## Generated File Structure
 
-The tool generates a directory for each API tag found in the specification. For a tag named `Users`, the structure would be:
-
+For a tag named `Users`:
 ```
-<output_directory>/  
-├── users/              # Folder for the 'Users' tag (name sanitized)
-│   ├── index.ts        # Exports all types, functions, and hooks
-│   ├── types.ts        # Generated TypeScript interfaces
-│   ├── functions.ts    # Generated base Axios functions
-│   └── hooks.ts        # Optional: Generated TanStack Query hooks
-└── products/           # Folder for the 'Products' tag
-    ├── index.ts
-    ├── types.ts
-    ├── functions.ts
-    └── hooks.ts        # Optional
+<output_directory>/
+├── users/
+│   ├── index.ts        # Main barrel export for the tag
+│   ├── types.ts        # TypeScript interfaces
+│   ├── functions.ts    # Exports *factory functions* for API calls
+│   ├── hooks.ts        # Optional: Exports *factory functions* for TanStack Query hooks
+│   └── users.sgClient.ts # Optional: Generated if useDefaultRequester=true
+└── # ... other tags
 ```
 
-*   Tag names are sanitized for directory names (lowercase, spaces/slashes replaced with hyphens).
-*   The `hooks.ts` file is only generated if the `--react-query` flag is used.
-*   The `index.ts` file provides convenient barrel exports.
+## Generated Code Deep Dive
 
-## Generated Code
+### 1. `types.ts`
+Contains TypeScript interfaces for request bodies, parameters, and responses. (Naming: `{Method}{Endpoint}Types_Request`, `{Method}{Endpoint}Types_Response`, etc.)
 
-Each tag directory contains the following files:
+### 2. `functions.ts` (Core Factories)
+*   Exports **factory functions** for each API operation, e.g., `export const createGetUserByIdFunction = (requester: SGSyncRequester) => { /* returns async func */ };`
+*   Each factory takes an `SGSyncRequester` argument.
+*   The returned async function (e.g., `getUserById`) takes path parameters, data, params, and `callSpecificOptions`. It constructs `SGSyncRequesterOptions` (including `authRequire: boolean` derived from your OpenAPI spec's `security` definitions) and calls the provided `requester`.
+*   The returned function's promise resolves with an `SGSyncResponse<ResponseType>`.
+*   **`SGSyncRequester`, `SGSyncRequesterOptions`, `SGSyncResponse`**: These crucial types define the contract for the requester mechanism. They are exported by the `sg-schema-sync` package (or available locally) for you to implement a custom requester.
 
-### `types.ts`
+### 3. `hooks.ts` (React Query Factories)
+*(Generated only if `--react-query` is used)*
+*   Exports **factory functions** for TanStack Query hooks, e.g., `export const createUseGetUserByIdHook = (requester: SGSyncRequester) => { /* returns hook */ };`
+*   Each factory takes an `SGSyncRequester`.
+*   The returned hook internally uses the corresponding function factory (e.g., `createGetUserByIdFunction`) to get an API call function, then uses it in `queryFn` or `mutationFn`.
+*   The hook extracts the `.data` property from the `SGSyncResponse`.
 
-Contains TypeScript interfaces generated from the OpenAPI schemas for:
-*   Request Bodies (Named like: `[BaseName]_[METHOD]_Request`, e.g., `User_POST_Request`)
-*   Successful Responses (Named like: `[BaseName]_[METHOD]_Response`, e.g., `UserById_GET_Response`)
-*   Query Parameters (Named like: `[BaseName]_[METHOD]_Parameters`, e.g., `Users_GET_Parameters`)
+### 4. `[tagName][defaultClientFileSuffix].ts` (e.g., `users.sgClient.ts`)
+*(Generated only if `useDefaultRequester: true` in config)*
+*   This file provides a **ready-to-use client**.
+*   It imports `createDefaultSGSyncRequester` from `sg-schema-sync` (this is a basic Axios/Fetch-based requester).
+*   It imports all factory functions from `./functions.ts` and (if applicable) `./hooks.ts`.
+*   It instantiates the default requester, configured with `baseURL` from your `packageConfig`.
+*   **Crucially, it includes a placeholder `getToken()` function.** You **must** edit this function in the generated file to provide your application's actual authentication token if your APIs require auth.
+    ```typescript
+    // Example snippet from the generated users.sgClient.ts
+    const getToken = async (): Promise<string | null> => {
+      // TODO: Implement your token retrieval logic here.
+      // Example: return localStorage.getItem('authToken');
+      console.warn('[SGSchema-Sync Client] getToken() needs to be implemented...');
+      return null;
+    };
+    const configuredRequester = createDefaultSGSyncRequester({ baseURL, getToken });
+    ```
+*   It then calls all imported factories with `configuredRequester` and exports the concrete, ready-to-use API functions (e.g., `export const GetUserById = ...;`) and hooks (e.g., `export const useGetUserById = ...;`).
 
-*   `[BaseName]` is derived preferably from the `operationId` (PascalCase), falling back to a PascalCase version of the path with parameters converted (e.g., `/users/{id}` -> `UsersById`).
-*   `[METHOD]` is the uppercase HTTP method (GET, POST, etc.).
-*   *Note: If type generation fails due to issues in the OpenAPI spec (like broken `$ref`s), a warning comment will be added to the file instead of the type.*
+### 5. `index.ts` (Barrel Exports)
+*   Always exports `* from './types';`.
+*   If `useDefaultRequester: true`: Exports `* from './[tagName][defaultClientFileSuffix]';` (e.g., `* from './users.sgClient';`).
+*   If `useDefaultRequester: false`: Exports `* from './functions';` and `* from './hooks';` (if generated), allowing you to import and use the factories with your custom requester.
 
-### `functions.ts`
+## Example Usage Scenarios
 
-Contains async functions for each API operation associated with the tag.
+### Scenario 1: Quick Start with Default Client
+**(Set `useDefaultRequester: true` in `sg-schema-sync.config.js`)**
 
-*   **Naming:** Function names follow the pattern `[PascalCaseEndpoint]_[METHOD_UPPERCASE]` (e.g., `UsersById_GET`, `Users_POST`). `[PascalCaseEndpoint]` is derived from the path structure (e.g., `/users/{id}` -> `UsersById`).
-*   **Parameters:** Functions include parameters for:
-    *   Path variables (currently typed as `string`).
-    *   Request body (`data:` parameter, typed using the corresponding `..._Request` type from `types.ts`).
-    *   Query parameters (`params?:` parameter, typed using the corresponding `..._Parameters` type from `types.ts`).
-    *   An optional final `config?: AxiosRequestConfig` parameter.
-*   **Return Type:** Functions return `Promise<AxiosResponse<T>>`, where `T` is the corresponding `..._Response` type from `types.ts` (or `any`/`void` if generation failed/not applicable).
-*   **Error Handling:** Warning comments are prepended if related type generation failed.
+1.  **Run `pnpm sg-schema-sync ...`**
+    This generates `users.sgClient.ts` (or your custom suffix).
+2.  **Implement `getToken()`:**
+    Open the generated `users.sgClient.ts` file and implement the `getToken` function to retrieve your app's authentication token.
+3.  **Use in your application:**
+    ```typescript
+    // Assuming your output directory is src/api/generated
+    import { GetUserById, useGetUserById } from '@/api/generated/users'; 
+    // Types are also re-exported via the client file or directly from types.ts
+    import type { UserResponse } from '@/api/generated/users/types'; // Or from '@/api/generated/users';
 
-### `hooks.ts`
+    async function fetchUserData(id: string) {
+      try {
+        // GetUserById now returns SGSyncResponse<UserResponse>
+        const response = await GetUserById(id); 
+        if (response.status === 200) {
+          const user: UserResponse = response.data;
+          console.log('User:', user);
+        } else {
+          console.error('Failed to fetch user:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error calling API', error);
+      }
+    }
 
-*(Generated only if `--react-query` flag is used)*
+    function UserProfile({ userId }: { userId: string }) {
+      const { data: user, isLoading, error } = useGetUserById(userId);
+      // ... render logic ...
+    }
+    ```
 
-Contains TanStack Query (React Query) hooks wrapping the base Axios functions:
+### Scenario 2: Advanced Integration with Custom Requester
+**(Set `useDefaultRequester: false` in `sg-schema-sync.config.js`)**
 
-*   **`useQuery` Hooks (for GET requests):**
-    *   Named like `use[FunctionName]` (e.g., `useUsersById_GET`).
-    *   Accepts path parameters, an optional `params` object, and optional `UseQueryOptions`.
-    *   Constructs a query key.
-    *   Calls the corresponding function from `functions.ts`.
-*   **`useMutation` Hooks (for POST, PUT, PATCH, DELETE requests):**
-    *   Named like `use[FunctionName]` (e.g., `useUsers_POST`).
-    *   Accepts optional `UseMutationOptions`.
-    *   Expects a `variables` object passed to `mutate`/`mutateAsync` containing path parameters, `data`, and/or `params` as needed by the corresponding function in `functions.ts`.
-    *   Calls the corresponding function from `functions.ts`.
+1.  **Run `pnpm sg-schema-sync ...`**
+    This generates `functions.ts` and `hooks.ts` containing factories.
+2.  **Create your Requester Adapter:**
+    In your project (e.g., `src/api/sgClientSetup.ts`), implement an adapter that conforms to the `SGSyncRequester` signature. This adapter will call your project's existing API request function.
 
-### `index.ts`
+    ```typescript
+    // src/api/sgClientSetup.ts
+    import { 
+      SGSyncRequester, 
+      SGSyncRequesterOptions, 
+      SGSyncResponse 
+    } from 'sg-schema-sync'; // Import types from the package
 
-Provides barrel exports for convenience:
-```typescript
-export * from './types';
-export * from './functions';
-// export * from './hooks'; // Conditionally exported
-```
+    // Import your project's existing API call function and its types
+    import YOUR_PROJECT_REQUEST_FUNCTION from '@/services/apiService'; // Example
+    import type { YourRequestOptions, YourResponse } from '@/services/apiService'; // Example
 
-## Example Usage
+    // Import generated factories for a specific tag (e.g., users)
+    import * as userFunctionFactories from './generated/users/functions';
+    import * as userHookFactories from './generated/users/hooks'; // If using hooks
 
-```typescript
-// Import via the index file
-import { UsersById_GET, useUsersById_GET } from '@/api/generated/users'; 
-import type { UsersById_GET_Response } from '@/api/generated/users';
-import type { AxiosResponse } from 'axios';
+    const myCustomRequester: SGSyncRequester = async <T = any>(
+      sgOptions: SGSyncRequesterOptions
+    ): Promise<SGSyncResponse<T>> => {
+      // 1. Map SGSyncRequesterOptions to your project's request options
+      const projectOptions: YourRequestOptions = {
+        method: sgOptions.method,
+        endpoint: sgOptions.url, // Your function might take 'endpoint' instead of 'url'
+        body: sgOptions.data,
+        queryParams: sgOptions.params,
+        requiresAuth: sgOptions.authRequire,
+        customHeaders: sgOptions.headers,
+        // ... map other necessary fields ...
+      };
 
-// Using the base function
-async function fetchUser(userId: string) {
-  try {
-    const response: AxiosResponse<UsersById_GET_Response> = await UsersById_GET(userId);
-    console.log('User:', response.data);
-  } catch (error) {
-    console.error('Failed to fetch user:', error);
-  }
-}
+      // 2. Call your project's request function
+      const projectResponse: YourResponse<T> = await YOUR_PROJECT_REQUEST_FUNCTION(projectOptions);
 
-// Using the TanStack Query hook
-function UserComponent({ userId }: { userId: string }) {
-  const { data: user, isLoading, error } = useUsersById_GET(userId, undefined, {
-    staleTime: 5 * 60 * 1000,
-  });
-  // ... render logic ...
-}
-```
+      // 3. Map your project's response back to SGSyncResponse<T>
+      return {
+        data: projectResponse.payload, // Example mapping
+        status: projectResponse.statusCode,
+        statusText: projectResponse.message || '',
+        headers: projectResponse.responseHeaders || {},
+        config: sgOptions, // Pass original sgOptions back
+      };
+    };
 
-## Dependencies (when using `--react-query`)
+    // Instantiate and export functions for the 'users' tag
+    export const GetUserById = userFunctionFactories.createGetUserByIdFunction(myCustomRequester);
+    export const CreateUser = userFunctionFactories.createCreateUserFunction(myCustomRequester);
+    // ... and so on
 
-If you use the `--react-query` flag, your project **must** have `@tanstack/react-query` installed:
+    // Instantiate and export hooks for the 'users' tag (if using React Query)
+    export const useUserById = userHookFactories.createUseGetUserByIdHook(myCustomRequester);
+    export const useCreateUser = userHookFactories.createUseCreateUserHook(myCustomRequester);
+    // ... and so on
+    ```
+3.  **Use in your application:**
+    ```typescript
+    import { GetUserById, useUserById } from '@/api/sgClientSetup'; // Import from your setup file
+    // ... rest is similar to Scenario 1, but uses your custom requester's behavior ...
+    ```
 
-```bash
-pnpm add @tanstack/react-query
-# or yarn add / npm install
-```
+## Dependencies
+
+*   `@tanstack/react-query`: (Required by **your project** if you enable `--react-query` and use the generated hooks).
+*   `axios`: (A dependency of `sg-schema-sync` itself for its default requester and spec fetching).
 
 ## Pitfalls & Known Issues
-
-*   **OpenAPI Specification Quality:** Accuracy depends heavily on the input spec.
-    *   **Broken `$ref`s:** Dereferencing is attempted. If it fails, generation proceeds with the original spec, potentially leading to type generation failures (indicated by comments and `any` types).
-    *   **Invalid Schemas:** Complex or invalid schemas may cause type generation to fail.
+*   **OpenAPI Specification Quality:** The accuracy of generated code heavily depends on the input spec. Ensure `security` definitions are correct for `authRequire` to work as expected.
+*   **Default Requester Auth:** The `getToken()` in the auto-generated client file is a placeholder and **must** be implemented for authentication to work with the default requester.
+*   **Custom Requester Mapping:** When creating a custom requester adapter, ensure thorough mapping between `SGSyncRequesterOptions`/`SGSyncResponse` and your project's own types.
 *   **Naming Collisions:** While efforts are made to generate unique names based on paths and methods, extremely similar paths might still rarely lead to collisions. Review generated files if your spec has highly ambiguous paths.
 *   **Parameter Handling:** Only basic query parameter handling is implemented.
 *   **Content Types:** Assumes `application/json`.

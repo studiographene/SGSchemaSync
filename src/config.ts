@@ -7,6 +7,8 @@ export interface PackageConfig {
   generateHooksNames: string;
   baseDir: string;
   baseURL: string;
+  useDefaultRequester?: boolean;
+  defaultClientFileSuffix?: string;
 }
 
 // Default package configuration
@@ -19,6 +21,8 @@ export const defaultPackageConfig: PackageConfig = {
   baseDir: "test-output/api/config-test",
   // Default to empty string - should be overridden by client configuration
   baseURL: "",
+  useDefaultRequester: false,
+  defaultClientFileSuffix: "sgClient.ts",
 };
 
 // Example of how to use this in a client project:
@@ -29,6 +33,7 @@ import { PackageConfig } from 'your-package-name';
 export const clientConfig: Partial<PackageConfig> = {
   baseURL: process.env.NEXT_PUBLIC_API_URL,
   generateFunctionNames: "custom{Method}{Endpoint}.ts",
+  useDefaultRequester: true,
   // other overrides...
 };
-*/ 
+*/
