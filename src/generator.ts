@@ -37,7 +37,7 @@ export async function generateFilesForTag(
   let functionsContent = `${functionTopBanner}\n\n`;
 
   functionsContent += `// Imports for the requester mechanism\n`;
-  functionsContent += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from './requester-types';\n`;
+  functionsContent += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
   const tagImportName = toTsIdentifier(tagName) + "Types";
   // Use the sanitized tag name for the file path
   const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
@@ -52,6 +52,21 @@ export async function generateFilesForTag(
   // Initialize hooksContent
   let hooksContent = "";
   let hooksGenerated = false; // Track if any hooks are added for this tag
+
+  // --- Add imports to hooksContent if reactQuery is enabled ---
+  if (reactQueryEnabled) {
+    const hookTopBanner = createTopLevelBanner("hooks");
+    hooksContent += `${hookTopBanner}\n\n`;
+    hooksContent += `// Imports for the requester mechanism\n`;
+    // Corrected import path for requester types
+    hooksContent += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
+    hooksContent += `import * as ${tagImportName} from './types';\n`;
+
+    // Define and sort TanStack Query imports
+    const tanstackImports = ["QueryKey", "useMutation", "UseMutationOptions", "useQuery", "UseQueryOptions"].sort(); // Sort them alphabetically
+
+    hooksContent += `import {\n  ${tanstackImports.join(",\n  ")}\n} from '@tanstack/react-query';\n\n`;
+  }
 
   for (const opInfo of operations) {
     const { operation, path, method } = opInfo;
@@ -296,171 +311,99 @@ export async function generateFilesForTag(
     functionsContent += functionString;
     functionFactoryNames.push(functionName);
 
-    // --- Generate React Query Hook Factory (if enabled) ---
-    if (reactQueryEnabled) {
-      console.log(`    [RQ Enabled] Generating hook factory for ${functionName}`);
-      let hookFactoryString = "";
-      const queryHookParamsList: string[] = []; // Parameters for the inner hook function
-      const pathParamNames = pathParams.map((p) => toTsIdentifier(p.name));
+    // --- Generate React Query Hook (if enabled) ---
+    if (reactQueryEnabled && packageConfig.generateHooks) {
+      hooksGenerated = true; // Mark that at least one hook is generated for this tag
 
-      pathParams.forEach((p) => {
-        queryHookParamsList.push(`${toTsIdentifier(p.name)}: string`);
-      });
+      const hookFactoryName = `create${hookBaseName}Hook`;
+      hookFactoryNames.push(hookFactoryName);
 
-      let actualParamsTypeForHookCall: string | null = null;
-      if (actualParametersTypeName) {
-        actualParamsTypeForHookCall = `${tagImportName}.${actualParametersTypeName}`;
-        queryHookParamsList.push(`params?: ${actualParamsTypeForHookCall}`);
+      // Determine queryKey structure
+      let queryKeyParts = [`"${sanitizedTagName}"`, `"${endpointBaseName}"`];
+      pathParams.forEach((p) => queryKeyParts.push(toTsIdentifier(p.name)));
+
+      // Arguments for the function created by the function factory (these are the actual values passed, not type defs)
+      const factoryInnerFuncArgsForHookCall = factoryInnerFuncParamsList.map((param) => param.split(":")[0].trim());
+
+      let hookComment = `/**\n`;
+      hookComment += ` * Factory for creating a TanStack Query hook for: ${summary}\n`;
+      hookComment += ` * Method: ${method.toUpperCase()}, Path: ${path}\n`;
+      if (operation.description) {
+        hookComment += ` * Description: ${operation.description.replace(/\n/g, "\n *   ")}\n`;
       }
+      hookComment += ` * @param requester The SGSyncRequester instance to use for making the underlying API call.\n`;
+      hookComment += ` * @returns A TanStack Query hook.\n`;
+      hookComment += ` */`;
 
-      let finalDataResponseTypeForHook: string = responseTypeForSGSyncResponse; // This is T in SGSyncResponse<T>
-      if (finalDataResponseTypeForHook === "void") finalDataResponseTypeForHook = "unknown"; // TanStack Query data type cannot be void, use unknown
+      hooksContent += `\n${hookComment}\n`;
+      hooksContent += `export function ${hookFactoryName}(\n  requester: SGSyncRequester\n) {\n`;
 
-      const operationGroupBannerForHook = createOperationGroupBanner(operation.summary, method, path);
-      hookFactoryString += `\n\n${operationGroupBannerForHook}\n`;
-      hookFactoryString += `/**\n * Factory for a TanStack Query ${method === "get" ? "useQuery" : "useMutation"} hook for ${summary}\n`;
-      hookFactoryString += ` * @param requester The SGSyncRequester instance to use for making the actual HTTP request.\n`;
-      hookFactoryString += ` */\n`;
-      hookFactoryString += `export const ${hookBaseName} = (requester: SGSyncRequester) => {\n`;
-      // Instantiate the API function using its factory
-      hookFactoryString += `  const ${functionName}Function = ${functionName}(requester);\n\n`;
+      hooksContent += `  const ${functionName}Instance = ${functionName}(requester);\n`;
 
       if (method === "get") {
-        // Add callSpecificOptions for the query hook, but only for relevant parts of SGSyncRequesterOptions (e.g. headers)
-        const queryCallSpecificOptionsType = `Partial<Omit<SGSyncRequesterOptions, 'method' | 'url' | 'authRequire' | 'data'${queryParamsTypeForFunc ? " | 'params'" : ""}>>`;
-        queryHookParamsList.push(`callSpecificOptions?: ${queryCallSpecificOptionsType}`);
-        queryHookParamsList.push(
-          `options?: Omit<UseQueryOptions<${finalDataResponseTypeForHook}, AxiosError, ${finalDataResponseTypeForHook}, QueryKey>, 'queryKey' | 'queryFn'>`
-        );
-        const queryKeyParts = [`'${sanitizedTagName}'`, `'${endpointBaseName}'`];
-        if (pathParamNames.length > 0) {
-          queryKeyParts.push(`{ ${pathParamNames.join(", ")} }`);
+        const hookSignatureParamsList: string[] = [];
+        pathParams.forEach((p) => hookSignatureParamsList.push(`${toTsIdentifier(p.name)}: string`));
+        if (queryParamsTypeForFunc) {
+          queryKeyParts.push("queryParams");
+          hookSignatureParamsList.push(`queryParams?: ${queryParamsTypeForFunc}`);
         }
-        if (actualParametersTypeName) {
-          queryKeyParts.push("params");
-        }
-        // queryKeyParts.push("callSpecificOptions"); // Consider if callSpecificOptions should affect queryKey
+        hookSignatureParamsList.push(`callSpecificOptions?: ${callSpecificOptionsType}`);
 
-        hookFactoryString += `  /**\n   * TanStack Query useQuery hook for ${summary}\n   */\n`;
-        hookFactoryString += `  return (\n    ${queryHookParamsList.join(",\n    ")}\n  ) => {\n`;
-        hookFactoryString += `    const queryKey: QueryKey = [${queryKeyParts.join(", ")}];\n\n`;
-        hookFactoryString += `    return useQuery<${finalDataResponseTypeForHook}, AxiosError, ${finalDataResponseTypeForHook}, QueryKey>({
+        const queryOptionsType = `Omit<UseQueryOptions<${finalResponseTypeNameForSig}, Error, ${finalResponseTypeNameForSig}, QueryKey>, 'queryKey' | 'queryFn'>`;
+        hooksContent += `  return function ${hookBaseName}(\n`;
+        hooksContent += `    ${hookSignatureParamsList.join(",\n    ")}${hookSignatureParamsList.length > 0 ? "," : ""}\n`;
+        hooksContent += `    queryOptions?: ${queryOptionsType}\n`;
+        hooksContent += `  ) {\n`;
+        hooksContent += `    const queryKeyInternal = [${queryKeyParts.join(", ")}] as QueryKey;\n`;
+        hooksContent += `    return useQuery<${finalResponseTypeNameForSig}, Error, ${finalResponseTypeNameForSig}, QueryKey>({\n`;
+        hooksContent += `      queryKey: queryKeyInternal,\n`;
+        hooksContent += `      queryFn: async () => {\n`;
+        hooksContent += `        const response = await ${functionName}Instance(${factoryInnerFuncArgsForHookCall.join(", ")});\n`;
+        hooksContent += `        return response.data; // Assumes response structure { data: T }
 `;
-        hookFactoryString += `      queryKey,
-`;
-        hookFactoryString += `      queryFn: async () => {\n`;
-        const baseFuncArgsList: string[] = [...pathParamNames];
-        if (actualParametersTypeName) {
-          baseFuncArgsList.push("params");
-        }
-        baseFuncArgsList.push("callSpecificOptions"); // Pass it to the underlying function call
-        hookFactoryString += `        const response = await ${functionName}Function(${baseFuncArgsList.join(", ")});\n`;
-        hookFactoryString += `        if (response.status >= 200 && response.status < 300) {
-`;
-        hookFactoryString += `          return response.data;
-`;
-        hookFactoryString += `        } else {
-`;
-        hookFactoryString += `          throw new AxiosError(
-`;
-        hookFactoryString += `            response.statusText || 'Request failed',
-`;
-        hookFactoryString += `            String(response.status),
-`;
-        hookFactoryString += `            response.config as any, // This might not be perfect AxiosRequestConfig
-`;
-        hookFactoryString += `            null, // request object
-`;
-        hookFactoryString += `            response as any // response object 
-`;
-        hookFactoryString += `          );
-`;
-        hookFactoryString += `        }
-`;
-        hookFactoryString += `      },
-`;
-        hookFactoryString += `      ...options,
-`;
-        hookFactoryString += `    });\n`;
-        hookFactoryString += `  };\n`;
+        hooksContent += `      },\n`;
+        hooksContent += `      ...(queryOptions || {}),\n`;
+        hooksContent += `    });\n`;
+        hooksContent += `  };\n`;
       } else {
-        // POST, PUT, PATCH, DELETE for useMutation
+        // useMutation
         let mutationVariablesType = "void";
-        const mutationVariablesParts: string[] = [];
-        // Path params are part of the variables if not part of the hook's direct signature (which they usually are for mutations)
-        pathParamNames.forEach((pName) => mutationVariablesParts.push(`${pName}: string`));
-        if (actualRequestBodyTypeName) {
-          mutationVariablesParts.push(`data: ${tagImportName}.${actualRequestBodyTypeName}`);
-        }
-        if (actualParametersTypeName) {
-          mutationVariablesParts.push(`params?: ${tagImportName}.${actualParametersTypeName}`);
-        }
-        // Add callSpecificOptions for the mutation hook
-        const mutationCallSpecificOptionsType = `Partial<Omit<SGSyncRequesterOptions, 'method' | 'url' | 'authRequire'${requestBodyTypeForFunc ? " | 'data'" : ""}${queryParamsTypeForFunc ? " | 'params'" : ""}>>`;
-        mutationVariablesParts.push(`callSpecificOptions?: ${mutationCallSpecificOptionsType}`);
-
-        if (mutationVariablesParts.length > 0) {
-          mutationVariablesType = `{ ${mutationVariablesParts.join("; ")} }`;
+        // Determine mutationVariablesType based on what functionNameInstance expects.
+        // This mirrors the logic in factoryInnerFuncParamsList for functionFactoryName
+        const mutationFuncExpectedParams = factoryInnerFuncParamsList;
+        if (mutationFuncExpectedParams.length === 1) {
+          const singleParamType = mutationFuncExpectedParams[0].split(":")[1].trim();
+          mutationVariablesType = singleParamType;
+        } else if (mutationFuncExpectedParams.length > 1) {
+          // Create an object type for variables
+          mutationVariablesType = `{ ${mutationFuncExpectedParams.map((p) => p.replace("?:", ":")).join("; ")} }`;
         }
 
-        const mutationHookParamsList = [
-          `options?: Omit<UseMutationOptions<${finalDataResponseTypeForHook}, AxiosError, ${mutationVariablesType}>, 'mutationFn'>`,
-        ];
+        const mutationOptionsType = `Omit<UseMutationOptions<${finalResponseTypeNameForSig}, Error, ${mutationVariablesType}>, 'mutationFn'>`;
+        hooksContent += `  return function ${hookBaseName}(\n`;
+        hooksContent += `    mutationOptions?: ${mutationOptionsType}\n`;
+        hooksContent += `  ) {\n`;
+        hooksContent += `    return useMutation<${finalResponseTypeNameForSig}, Error, ${mutationVariablesType}>({\n`;
+        hooksContent += `      mutationFn: async (${mutationVariablesType === "void" ? "" : "variables"}) => {\n`;
 
-        hookFactoryString += `  /**\n   * TanStack Query useMutation hook for ${summary}\n   */\n`;
-        hookFactoryString += `  return (\n    ${mutationHookParamsList.join(",\n    ")}\n  ) => {\n`;
-        hookFactoryString += `    return useMutation<${finalDataResponseTypeForHook}, AxiosError, ${mutationVariablesType}>({
-`;
-        hookFactoryString += `      mutationFn: async (variables) => {\n`;
-        const baseFuncArgsList: string[] = [];
-        pathParamNames.forEach((pName) => baseFuncArgsList.push(`variables.${pName}`));
-        if (actualRequestBodyTypeName) {
-          baseFuncArgsList.push("variables.data");
+        let callArgs = "";
+        if (mutationVariablesType !== "void") {
+          if (mutationFuncExpectedParams.length === 1) {
+            callArgs = "variables";
+          } else if (mutationFuncExpectedParams.length > 1) {
+            callArgs = factoryInnerFuncArgsForHookCall.map((argName) => `variables.${argName}`).join(", ");
+          }
         }
-        if (actualParametersTypeName) {
-          baseFuncArgsList.push("variables.params");
-        }
-        baseFuncArgsList.push("variables.callSpecificOptions");
 
-        hookFactoryString += `        const response = await ${functionName}Function(${baseFuncArgsList.join(", ")});\n`;
-        hookFactoryString += `        if (response.status >= 200 && response.status < 300) {
+        hooksContent += `        const response = await ${functionName}Instance(${callArgs});\n`;
+        hooksContent += `        return response.data; // Assumes response structure { data: T }
 `;
-        hookFactoryString += `          return response.data;
-`;
-        hookFactoryString += `        } else {
-`;
-        hookFactoryString += `          throw new AxiosError(
-`;
-        hookFactoryString += `            response.statusText || 'Request failed',
-`;
-        hookFactoryString += `            String(response.status),
-`;
-        hookFactoryString += `            response.config as any, // This might not be perfect AxiosRequestConfig
-`;
-        hookFactoryString += `            null, // request object
-`;
-        hookFactoryString += `            response as any // response object
-`;
-        hookFactoryString += `          );
-`;
-        hookFactoryString += `        }
-`;
-        hookFactoryString += `      },
-`;
-        hookFactoryString += `      ...options,
-`;
-        hookFactoryString += `    });\n`;
-        hookFactoryString += `  };\n`;
+        hooksContent += `      },\n`;
+        hooksContent += `      ...(mutationOptions || {}),\n`;
+        hooksContent += `    });\n`;
+        hooksContent += `  };\n`;
       }
-      hookFactoryString += `};\n`;
-
-      if (hookFactoryString.trim()) {
-        hooksContent += hookFactoryString;
-        hooksGenerated = true;
-        hookFactoryNames.push(hookBaseName);
-      } else {
-        console.log(`    [RQ] No hook factory string generated for ${functionName}`);
-      }
+      hooksContent += `}\n`;
     }
   } // End loop through operations
 

@@ -85,7 +85,7 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 *   `--config <path>`: (Optional) Path to a JavaScript configuration file (e.g., `sg-schema-sync.config.js`). If not provided, the tool will automatically look for `sg-schema-sync.config.js` in the current working directory. This file can export configuration options to customize fetching the OpenAPI spec and other aspects of generation.
 *   `--prettier / --no-prettier`: (Optional) Enable or disable Prettier formatting for the generated files. Defaults to enabled. This overrides the `formatWithPrettier` setting in the config file.
 *   `--prettier-config-path <path>`: (Optional) Path to a custom Prettier configuration file (e.g., `.prettierrc.json`, `prettier.config.js`). If provided, this overrides the `prettierConfigPath` setting in the config file and Prettier's default config discovery.
-*   `--adapter-path <path>`: (Optional) Specifies the path (relative to project root) for the custom requester adapter file (e.g., `src/api/sgClientSetup.ts`). This is used when `useDefaultRequester` is `false`. Overrides `customRequesterAdapterPath` in the config file.
+*   `--adapter-path <path>`: (Optional) Specifies the path for the custom requester adapter file (e.g., `sgClientSetup.ts`). This is used when `useDefaultRequester` is `false`. If a relative path is given, it's resolved from the main output directory (specified by `-o`). Absolute paths are used as-is. Overrides `customRequesterAdapterPath` in the config file.
 *   `--scaffold-adapter / --no-scaffold-adapter`: (Optional) When `useDefaultRequester` is `false`, this flag controls whether a scaffold for the custom requester adapter file is generated if it doesn't already exist. Defaults to enabled. Overrides `scaffoldRequesterAdapter` in the config file.
 
 ## Configuration File (`sg-schema-sync.config.js`)
@@ -107,7 +107,7 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
 *   `defaultClientFileSuffix: string`: (Default: `'sgClient.ts'`) Suffix for the auto-generated client file when `useDefaultRequester` is true. Example: `products.sgClient.ts`.
 *   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier. Can be overridden by the `--prettier` / `--no-prettier` CLI flags.
 *   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file. If not set, Prettier will attempt to find a configuration file as per its standard discovery mechanism (e.g., `.prettierrc` in the project). Can be overridden by the `--prettier-config-path` CLI flag.
-*   `customRequesterAdapterPath: string`: (Default: `'src/api/sgClientSetup.ts'`) When `useDefaultRequester` is `false`, this is the path (relative to project root) where the tool will look for or scaffold the custom requester adapter file.
+*   `customRequesterAdapterPath: string`: (Default: `'src/api/sgClientSetup.ts'`) When `useDefaultRequester` is `false`, this is the path for the custom requester adapter file. If a relative path is provided (e.g., `myClientAdapter.ts`), it will be created/looked for inside the main output directory (specified by `output` in config or `-o` in CLI). Absolute paths are used as-is.
 *   `scaffoldRequesterAdapter: boolean`: (Default: `true`) When `useDefaultRequester` is `false`, if this is `true` and the file at `customRequesterAdapterPath` does not exist, the tool will generate a basic scaffold for it, including commented-out imports and instantiations for all generated API tags. This file will not be overwritten if it already exists.
 *   *(Other fields like `baseDir` also exist).*
 
@@ -152,7 +152,7 @@ module.exports = {
 
 By default, after generation, all `.ts` and `.js` files in the output directory will be formatted using Prettier. This behavior can be controlled via configuration (see above).
 
-For a tag named `Users`:
+For a tag named `Users` and assuming `customRequesterAdapterPath` is `sgClientSetup.ts` (and `useDefaultRequester: false`):
 ```
 <output_directory>/
 ├── users/
@@ -161,6 +161,7 @@ For a tag named `Users`:
 │   ├── functions.ts    # Exports *factory functions* for API calls
 │   ├── hooks.ts        # Optional: Exports *factory functions* for TanStack Query hooks
 │   └── users.sgClient.ts # Optional: Generated if useDefaultRequester=true
+├── sgClientSetup.ts    # Custom adapter scaffold/file (if useDefaultRequester=false)
 └── # ... other tags
 ```
 

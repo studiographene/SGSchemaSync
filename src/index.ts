@@ -212,7 +212,11 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
     } = options.parserConfig.packageConfig || {};
 
     if (!useDefaultRequester && scaffoldRequesterAdapter && customRequesterAdapterPath) {
-      const resolvedAdapterPath = path.resolve(process.cwd(), customRequesterAdapterPath);
+      // Resolve adapter path: if it's absolute, use as is. If relative, resolve from baseOutputDir.
+      const resolvedAdapterPath = path.isAbsolute(customRequesterAdapterPath)
+        ? customRequesterAdapterPath
+        : path.resolve(baseOutputDir, customRequesterAdapterPath);
+
       const adapterDir = path.dirname(resolvedAdapterPath);
 
       if (!fsSync.existsSync(resolvedAdapterPath)) {
