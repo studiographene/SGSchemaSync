@@ -94,6 +94,7 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
 **`config.packageConfig` options:**
 
 *   `baseURL: string`: Base URL for the API (used by the default requester or if `--input` is not a full URL).
+*   `generateFunctions: boolean`: (Default: `true`) Controls whether API client function factory functions are generated in `functions.ts` files. If set to `false`, function factories (and subsequently hook factories, if enabled) will not be generated for API operations.
 *   `generateFunctionNames: string`: Template for generated function names (e.g., `{method}{Endpoint}`). Default: `{method}{Endpoint}`.
 *   `generateTypesNames: string`: Template for generated type names. Default: `{Method}{Endpoint}Types`.
 *   `generateHooksNames: string`: Template for generated hook names. Default: `use{Method}{Endpoint}`.
@@ -104,7 +105,7 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
 *   `defaultClientFileSuffix: string`: (Default: `'sgClient.ts'`) Suffix for the auto-generated client file when `useDefaultRequester` is true. Example: `products.sgClient.ts`.
 *   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier. Can be overridden by the `--prettier` / `--no-prettier` CLI flags.
 *   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file. If not set, Prettier will attempt to find a configuration file as per its standard discovery mechanism (e.g., `.prettierrc` in the project). Can be overridden by the `--prettier-config-path` CLI flag.
-*   *(Other fields like `generateFunctions`, `baseDir` also exist).*
+*   *(Other fields like `baseDir` also exist).*
 
 **Example `sg-schema-sync.config.js`:**
 ```javascript
@@ -113,6 +114,7 @@ module.exports = {
   config: {
     packageConfig: {
       baseURL: 'https://api.example.com/v1',
+      generateFunctions: true, // Generate API function factories (default is true)
       generateHooks: true, // Generate TanStack Query hooks
       useDefaultRequester: true, // Generate a client file with default requester
       defaultClientFileSuffix: 'Client.ts', // e.g., usersClient.ts
