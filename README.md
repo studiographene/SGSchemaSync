@@ -38,10 +38,10 @@ Install the tool as a development dependency directly from its GitHub repository
 
 ```bash
 # Using SSH (if you have SSH keys configured with GitHub):
-pnpm add -D git+ssh://git@github.com/diogo-SG/hackathon-2025.git#main
+pnpm add -D git+ssh://git@github.com/diogo-SG/SGSchemaSync.git#main
 
 # Or using HTTPS:
-pnpm add -D git+https://github.com/diogo-SG/hackathon-2025.git#main
+pnpm add -D git+https://github.com/diogo-SG/SGSchemaSync.git#main
 
 # Replace #main with the desired branch, tag, or commit hash if needed.
 ```
