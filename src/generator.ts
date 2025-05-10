@@ -323,7 +323,9 @@ export async function generateFilesForTag(
       pathParams.forEach((p) => queryKeyParts.push(toTsIdentifier(p.name)));
 
       // Arguments for the function created by the function factory (these are the actual values passed, not type defs)
-      const factoryInnerFuncArgsForHookCall = factoryInnerFuncParamsList.map((param) => param.split(":")[0].trim());
+      const factoryInnerFuncArgsForHookCall = factoryInnerFuncParamsList.map((param) => {
+        return param.split(":")[0].replace("?", "").trim();
+      });
 
       let hookComment = `/**\n`;
       hookComment += ` * Factory for creating a TanStack Query hook for: ${summary}\n`;
