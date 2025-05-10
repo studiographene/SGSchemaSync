@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { execSync } from "child_process";
 import { loadAndParseSpec, ParserConfig } from "./parser";
 import { generateFilesForTag } from "./generator";
 import { OpenAPIV3 } from "openapi-types";
@@ -177,6 +178,31 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       const indexFilePath = path.join(tagOutputDir, "index.ts");
       await fs.writeFile(indexFilePath, indexContent, "utf-8");
       console.log(`  -> Index file written to ${indexFilePath}`);
+    }
+
+    // Format generated files with Prettier if enabled
+    const { formatWithPrettier, prettierConfigPath } = options.parserConfig.packageConfig || {};
+
+    if (formatWithPrettier) {
+      try {
+        console.log(`Formatting generated files with Prettier in ${baseOutputDir}...`);
+        let prettierCommand = `npx prettier --write "${baseOutputDir}/**/*.ts" "${baseOutputDir}/**/*.js" --log-level warn`;
+        if (prettierConfigPath) {
+          // Ensure the path is resolved correctly if it's relative
+          const resolvedPrettierConfigPath = path.resolve(process.cwd(), prettierConfigPath);
+          prettierCommand += ` --config "${resolvedPrettierConfigPath}"`;
+          console.log(`  Using Prettier config: ${resolvedPrettierConfigPath}`);
+        }
+        execSync(prettierCommand, { stdio: "inherit" });
+        console.log("Prettier formatting complete.");
+      } catch (prettierError) {
+        console.warn(
+          "\n⚠️ WARNING: Prettier formatting failed. Your files are generated but may not be formatted correctly."
+        );
+        console.warn(prettierError); // Log the error for more details
+      }
+    } else {
+      console.log("Prettier formatting skipped as per configuration.");
     }
 
     console.log(`Successfully generated API client files in ${baseOutputDir}`);

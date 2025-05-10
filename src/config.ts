@@ -9,6 +9,8 @@ export interface PackageConfig {
   baseURL: string;
   useDefaultRequester?: boolean;
   defaultClientFileSuffix?: string;
+  formatWithPrettier?: boolean;
+  prettierConfigPath?: string;
 }
 
 // Default package configuration
@@ -23,6 +25,8 @@ export const defaultPackageConfig: PackageConfig = {
   baseURL: "",
   useDefaultRequester: false,
   defaultClientFileSuffix: "sgClient.ts",
+  formatWithPrettier: true,
+  prettierConfigPath: undefined,
 };
 
 // Example of how to use this in a client project:

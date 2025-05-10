@@ -84,6 +84,8 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 *   `-o, --output <directory>`: (Required) The base output directory where the tag-based generated folders will be placed (relative to the current working directory).
 *   `--react-query`: (Optional) Generate TanStack Query hooks (`useQuery`/`useMutation`) in addition to the base Axios functions.
 *   `--config <path>`: (Optional) Path to a JavaScript configuration file (e.g., `sg-schema-sync.config.js`). If not provided, the tool will automatically look for `sg-schema-sync.config.js` in the current working directory. This file can export configuration options to customize fetching the OpenAPI spec and other aspects of generation.
+*   `--prettier / --no-prettier`: (Optional) Enable or disable Prettier formatting for the generated files. Defaults to enabled. This overrides the `formatWithPrettier` setting in the config file.
+*   `--prettier-config-path <path>`: (Optional) Path to a custom Prettier configuration file (e.g., `.prettierrc.json`, `prettier.config.js`). If provided, this overrides the `prettierConfigPath` setting in the config file and Prettier's default config discovery.
 
 ## Configuration File (`sg-schema-sync.config.js`)
 
@@ -100,6 +102,8 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
     *   If `true`, a client file (e.g., `[tagName].sgClient.ts`) is generated for each tag, using a built-in default requester. This provides ready-to-use functions and hooks.
     *   If `false`, only factory functions are generated, and you provide your own requester implementation.
 *   `defaultClientFileSuffix: string`: (Default: `'sgClient.ts'`) Suffix for the auto-generated client file when `useDefaultRequester` is true. Example: `products.sgClient.ts`.
+*   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier. Can be overridden by the `--prettier` / `--no-prettier` CLI flags.
+*   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file. If not set, Prettier will attempt to find a configuration file as per its standard discovery mechanism (e.g., `.prettierrc` in the project). Can be overridden by the `--prettier-config-path` CLI flag.
 *   *(Other fields like `generateFunctions`, `generateHooks`, `baseDir` also exist).*
 
 **Example `sg-schema-sync.config.js`:**
@@ -111,6 +115,8 @@ module.exports = {
       baseURL: 'https://api.example.com/v1',
       useDefaultRequester: true, // Generate a client file with default requester
       defaultClientFileSuffix: 'Client.ts', // e.g., usersClient.ts
+      formatWithPrettier: true, // Explicitly set, though true is the default
+      // prettierConfigPath: '.prettierrc.custom.json', // Optional: specify custom prettier config
 
       // Optional: Override default naming conventions
       // generateFunctionNames: "call{Endpoint}{method}",
@@ -126,12 +132,14 @@ module.exports = {
 ```
 
 **Configuration Precedence:** (Simplified)
-1.  CLI arguments (e.g., `-o`, `--react-query`).
+1.  CLI arguments (e.g., `-o`, `--react-query`, `--prettier`, `--prettier-config-path`).
 2.  `sg-schema-sync.config.js` values.
 3.  `--input` (as fallback for `baseURL`).
 4.  Internal defaults.
 
 ## Generated File Structure
+
+By default, after generation, all `.ts` and `.js` files in the output directory will be formatted using Prettier. This behavior can be controlled via configuration (see above).
 
 For a tag named `Users`:
 ```

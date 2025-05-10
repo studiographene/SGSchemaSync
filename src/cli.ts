@@ -16,6 +16,8 @@ interface CliGeneratorOptions extends CoreGeneratorOptions {
   input?: string; // This can serve as a fallback or override for baseURL
   output: string; // Already requiredOption
   config?: string;
+  prettier?: boolean; // Added for CLI control over Prettier
+  prettierConfigPath?: string; // Added for CLI Prettier config path
 }
 
 const program = new Command();
@@ -35,7 +37,12 @@ program
   )
   .requiredOption("-o, --output <path>", "Output path for the generated TypeScript file (relative to CWD)")
   .option("--react-query", "Generate TanStack Query (v4/v5) hooks")
-  .option("--config <path>", `Path to a JavaScript configuration file (default: ${DEFAULT_CONFIG_FILENAME} in CWD)`);
+  .option("--config <path>", `Path to a JavaScript configuration file (default: ${DEFAULT_CONFIG_FILENAME} in CWD)`)
+  .option("--prettier / --no-prettier", "Enable or disable Prettier formatting (overrides config file setting)")
+  .option(
+    "--prettier-config-path <path>",
+    "Path to a custom Prettier configuration file (overrides config file setting)"
+  );
 
 program.parse(process.argv);
 
@@ -90,6 +97,16 @@ if (options.input) {
       `Using baseURL from config file: ${finalPackageConfig.baseURL}. (--input '${options.input}' is ignored for baseURL when config provides it).`
     );
   }
+}
+
+// Override Prettier settings from CLI if provided
+if (options.prettier !== undefined) {
+  finalPackageConfig.formatWithPrettier = options.prettier;
+  console.log(`Prettier formatting ${options.prettier ? "enabled" : "disabled"} via CLI.`);
+}
+if (options.prettierConfigPath !== undefined) {
+  finalPackageConfig.prettierConfigPath = options.prettierConfigPath;
+  console.log(`Using Prettier config path from CLI: ${options.prettierConfigPath}`);
 }
 
 // Validate that either input URL/path or a baseURL from config is provided
