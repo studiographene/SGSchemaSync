@@ -188,7 +188,8 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
         const relativeToCustomRequester = path
           .relative(tagOutputDir, actualAbsoluteCustomRequesterPath)
-          .replace(/\\\\/g, "/");
+          .replace(/\\\\/g, "/")
+          .replace(/\.(ts|js|mjs|cjs|jsx|tsx)$/, ""); // Strip common extensions
 
         requesterInstanceName = packageConfig.customRequesterConfig.exportName;
         clientModuleContent += `import { ${requesterInstanceName} } from '${relativeToCustomRequester.startsWith(".") ? relativeToCustomRequester : "./" + relativeToCustomRequester}';\n\n`;
