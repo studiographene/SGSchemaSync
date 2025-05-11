@@ -125,19 +125,17 @@ async function main() {
 
       if (loadedModule && (loadedModule.config || loadedModule.default)) {
         const rawFileExport = loadedModule.config || loadedModule.default;
-        if (rawFileExport) {
-          if (rawFileExport.packageConfig && typeof rawFileExport.packageConfig === "object") {
-            userConfigFromFile = rawFileExport.packageConfig as Partial<PackageConfig>;
-          } else {
-            userConfigFromFile = rawFileExport as Partial<PackageConfig>;
-          }
-          console.log(`Loaded configuration from: ${absoluteConfigPath}`);
+        if (rawFileExport.packageConfig && typeof rawFileExport.packageConfig === "object") {
+          userConfigFromFile = rawFileExport.packageConfig as Partial<PackageConfig>;
         } else {
-          console.error(
-            `Error: Configuration file at '${absoluteConfigPath}' must export a 'config' object or have a default export.`
-          );
-          process.exit(1);
+          userConfigFromFile = rawFileExport as Partial<PackageConfig>;
         }
+        console.log(`Loaded configuration from: ${absoluteConfigPath}`);
+      } else {
+        console.error(
+          `Error: Configuration file at '${absoluteConfigPath}' must export a 'config' object or have a default export containing 'packageConfig', or be the 'packageConfig' object itself.`
+        );
+        process.exit(1);
       }
     } catch (e: any) {
       console.error(`Error loading configuration file '${effectiveConfigPath}': ${e.message}`);
