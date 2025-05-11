@@ -30,6 +30,7 @@ interface CliOptions extends Partial<Omit<PackageConfig, "defaultRequesterConfig
   customRequesterPath?: string;
   customRequesterExportName?: string;
   scaffoldRequester?: boolean;
+  stripPathPrefix?: string;
 }
 
 program
@@ -97,6 +98,10 @@ program
     "--scaffold-requester [boolean]",
     "Scaffold a requester adapter. Overrides 'scaffoldRequesterAdapter' in config file.",
     (val) => val !== "false"
+  )
+  .option(
+    "--strip-path-prefix <prefix>",
+    "Strip path prefix from generated client module names. Overrides 'stripPathPrefix' in config file."
   );
 
 program.parse(process.argv);
@@ -167,6 +172,7 @@ async function main() {
   if (cliArgs.generateHooks !== undefined) mergedConfig.generateHooks = cliArgs.generateHooks;
   if (cliArgs.generateFunctions !== undefined) mergedConfig.generateFunctions = cliArgs.generateFunctions;
   if (cliArgs.scaffoldRequester !== undefined) mergedConfig.scaffoldRequesterAdapter = cliArgs.scaffoldRequester;
+  if (cliArgs.stripPathPrefix !== undefined) mergedConfig.stripPathPrefix = cliArgs.stripPathPrefix;
 
   // Handle nested defaultRequesterConfig
   const getTokenModulePathFromFile = userConfigFromFile.defaultRequesterConfig?.getTokenModulePath;
@@ -222,6 +228,7 @@ async function main() {
     generateHooks: mergedConfig.generateHooks ?? baseDefaultConfig.generateHooks!,
     generateFunctions: mergedConfig.generateFunctions ?? baseDefaultConfig.generateFunctions!,
     scaffoldRequesterAdapter: mergedConfig.scaffoldRequesterAdapter ?? baseDefaultConfig.scaffoldRequesterAdapter!,
+    stripPathPrefix: mergedConfig.stripPathPrefix,
     defaultRequesterConfig: undefined, // Initialize, will be set if useDefaultRequester is true
   };
 
