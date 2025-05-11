@@ -360,6 +360,7 @@ export async function generateFilesForTag(
         hooksContent += `      },\n`;
         hooksContent += `      ...(queryOptions || {}),\n`;
         hooksContent += `    });\n`;
+        hooksContent += `  };\n`;
       } else {
         // useMutation
         let mutationVariablesType = "void";
@@ -391,8 +392,7 @@ export async function generateFilesForTag(
         }
 
         hooksContent += `        const response = await ${functionName}Instance(${callArgs});\n`;
-        hooksContent += `        return response.data; // Assumes response structure { data: T }
-`;
+        hooksContent += `        return response.data; // Assumes response structure { data: T }\n`;
         hooksContent += `      },\n`;
         hooksContent += `      ...(mutationOptions || {}),\n`;
         hooksContent += `    });\n`;
