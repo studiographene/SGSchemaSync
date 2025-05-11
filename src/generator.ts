@@ -230,7 +230,10 @@ export async function generateFilesForTag(
     factoryInnerFuncParamsList.push(`callSpecificOptions?: ${callSpecificOptionsType}`);
 
     const factoryInnerFuncParamsString = factoryInnerFuncParamsList.join(",\n    ");
-    const urlPath = path.replace(/{([^}]+)}/g, (match, paramName) => `\${toTsIdentifier(paramName)}`);
+    const urlPath = path.replace(/{([^}]+)}/g, (match, paramNameInPath) => {
+      const sanitizedParamName = toTsIdentifier(paramNameInPath);
+      return `\${${sanitizedParamName}}`; // Ensure this correctly interpolates the variable
+    });
 
     let finalResponseTypeNameForSig: string;
     let responseTypeForSGSyncResponse: string;
@@ -360,7 +363,6 @@ export async function generateFilesForTag(
         hooksContent += `      },\n`;
         hooksContent += `      ...(queryOptions || {}),\n`;
         hooksContent += `    });\n`;
-        hooksContent += `  };\n`;
       } else {
         // useMutation
         let mutationVariablesType = "void";
