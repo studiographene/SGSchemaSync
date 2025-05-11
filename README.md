@@ -2,33 +2,36 @@
 
 A CLI tool to generate type-safe TypeScript API client code from an OpenAPI v3 specification.
 
-This tool parses an OpenAPI JSON file (local or remote) and generates:
+This tool parses an OpenAPI JSON or YAML file (local or remote) and generates:
 *   TypeScript interfaces for request bodies, parameters, and responses.
 *   **Factory functions** for creating API call functions.
 *   Optionally, **factory functions** for TanStack Query (v4/v5) hooks.
-*   An optional, auto-generated **default client file** that uses a built-in requester for immediate use.
+*   An **auto-generated client module** per API tag that orchestrates these factories with a configured requester.
+*   An optional, **scaffolded custom requester file** if you opt out of the default requester.
 
 Files are organized into **tag-based directories**, where the tag is determined by the first `tag` associated with each endpoint in the OpenAPI specification.
 
 ## Key Features & Approach
 
-SGSchema-Sync now employs a **factory-based approach** for generating API functions and hooks. This provides flexibility for integration into various project structures:
+SGSchema-Sync now employs a **factory-based approach** for generating API functions and hooks, coupled with a flexible requester system:
 
 1.  **Core Generation (Factories):**
-    *   `functions.ts`: Contains factory functions (e.g., `createGetProductFunction(requester)`) for each API operation. These factories take an `SGSyncRequester` instance (see below) and return an actual async function to call the API.
-    *   `hooks.ts`: (If `generateHooks: true` in config) Contains factory functions (e.g., `createUseGetProductHook(requester)`) for TanStack Query hooks. These also take an `SGSyncRequester`.
-    *   `types.ts`: Contains all TypeScript request/response types.
+    *   `functions.ts` (per tag): Contains factory functions (e.g., `createGetProductFunction(requester)`) for each API operation. These factories take an `SGSyncRequester` instance and return an actual async function to call the API.
+    *   `hooks.ts` (per tag, if `generateHooks: true`): Contains factory functions (e.g., `createUseGetProductHook(requester)`) for TanStack Query hooks. These also take an `SGSyncRequester`.
+    *   `types.ts` (per tag): Contains all TypeScript request/response types for that tag's operations.
 
 2.  **Requester Abstraction (`SGSyncRequester`):**
-    *   The generated factories depend on a `SGSyncRequester` function type. This function is responsible for making the actual HTTP request.
-    *   Your project can provide its own implementation of this requester, adapting to your existing API service layer or preferred HTTP client.
-    *   The `SGSyncRequester`, `SGSyncRequesterOptions`, and `SGSyncResponse` types are importable from the `sg-schema-sync` package (once published and installed) or will be available alongside generated code for local use.
+    *   The generated factories depend on an `SGSyncRequester` function type (defined in `sg-schema-sync/requester-types`). This function is responsible for making the actual HTTP request.
+    *   You can choose to use a **default requester** (axios/fetch-based) provided by `sg-schema-sync` or provide your **own custom implementation**, adapting to your existing API service layer or preferred HTTP client.
 
-3.  **Default Client (Optional Quick Start):**
-    *   If configured (`useDefaultRequester: true` in `sg-schema-sync.config.js`), the tool generates an additional file per tag (e.g., `products.sgClient.ts`).
-    *   This file uses a **built-in default requester** (based on Axios/Fetch) provided by `sg-schema-sync`.
-    *   It automatically instantiates all function and hook factories, exporting ready-to-use API functions and hooks.
-    *   This is ideal for new projects or for quickly getting started.
+3.  **Orchestration Client Module:**
+    *   For each API tag, a central client module (e.g., `user/client.ts`) is automatically generated and **overwritten on each run**.
+    *   This module imports the necessary function/hook factories for the tag.
+    *   It then imports and configures the chosen requester (default or custom).
+    *   Finally, it instantiates all factories with this requester and exports the ready-to-use API functions and hooks.
+
+4.  **Scaffolding for Custom Requesters:**
+    *   If you opt for a custom requester, the tool can generate a scaffold file (e.g., `sg-requester.ts`) with a placeholder implementation and instructions, making setup easier.
 
 ## Installation
 
@@ -75,7 +78,7 @@ Run the generator from the root of your project using the command exposed via `p
 
 ```bash
 # Example:
-pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
+pnpm sg-schema-sync -i <path_or_url_to_openapi_spec> -o ./src/api/generated
 ```
 
 **Options:**

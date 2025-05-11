@@ -3,175 +3,252 @@
 // src/cli.ts
 import { Command } from "commander";
 import path from "path";
-import fs from "fs"; // Added for existsSync
-import { runGenerator, GeneratorOptions as CoreGeneratorOptions } from "./index"; // Import core logic
-import packageJson from "../package.json"; // Import for version
-// import { clientConfig } from "./helpers/testconfig"; // Commented out or removed
-import { ParserConfig } from "./parser"; // Added
-import { PackageConfig, defaultPackageConfig } from "./config"; // Added for default
-
-// Extend CoreGeneratorOptions for CLI specific flags
-interface CliGeneratorOptions extends CoreGeneratorOptions {
-  input?: string; // This can serve as a fallback or override for baseURL
-  output: string; // Already requiredOption
-  config?: string;
-  prettier?: boolean; // Added for CLI control over Prettier
-  prettierConfigPath?: string; // Added for CLI Prettier config path
-  adapterPath?: string; // For customRequesterAdapterPath
-  scaffoldAdapter?: boolean; // For scaffoldRequesterAdapter
-  stripPathPrefix?: string; // New CLI option
-}
+import fs from "fs";
+import { runGenerator, GeneratorOptions as CoreGeneratorOptions } from "./index";
+import packageJson from "../package.json";
+import {
+  PackageConfig,
+  ResolvedPackageConfig,
+  defaultConfig as baseDefaultConfig, // Renamed to avoid confusion
+} from "./config";
 
 const program = new Command();
 const DEFAULT_CONFIG_FILENAME = "sg-schema-sync.config.js";
 
+// Define hardcoded defaults for specific nested properties formerly in defaultConfig
+const DEFAULT_GET_TOKEN_EXPORT_NAME = "getToken";
+const DEFAULT_CUSTOM_REQUESTER_FILE_PATH = "./sg-requester.ts";
+const DEFAULT_CUSTOM_REQUESTER_EXPORT_NAME = "SchemaSyncRequester";
+
+interface CliOptions extends Partial<Omit<PackageConfig, "defaultRequesterConfig" | "customRequesterConfig">> {
+  config?: string;
+  output: string;
+  prettier?: boolean;
+
+  getTokenModulePath?: string;
+  getTokenExportName?: string;
+  customRequesterPath?: string;
+  customRequesterExportName?: string;
+}
+
 program
   .name("sg-schema-sync")
-  .description(
-    "CLI tool to generate type-safe API clients (Axios functions, types, optional TanStack Query hooks) from an OpenAPI v3 specification."
-  )
-  .version(packageJson.version); // Use version from package.json
+  .description("CLI tool to generate type-safe API clients from an OpenAPI v3 specification.")
+  .version(packageJson.version);
 
 program
   .option(
     "-i, --input <path_or_url>",
-    "Path or URL to the OpenAPI JSON specification (can be overridden by config file's baseURL)"
+    "Path or URL to the OpenAPI JSON specification. Overrides 'input' in config file."
   )
-  .requiredOption("-o, --output <path>", "Output path for the generated TypeScript file (relative to CWD)")
-  .option("--config <path>", `Path to a JavaScript configuration file (default: ${DEFAULT_CONFIG_FILENAME} in CWD)`)
-  .option("--prettier / --no-prettier", "Enable or disable Prettier formatting (overrides config file setting)")
+  .requiredOption(
+    "-o, --output <path>",
+    "Output directory for the generated files. Overrides 'outputDir' in config file."
+  )
+  .option("--config <path>", `Path to a JavaScript configuration file (default: ${DEFAULT_CONFIG_FILENAME} in CWD).`)
+  .option("--baseURL <url>", "Base URL for the API. Overrides 'baseURL' in config file.")
+  .option("--timeout <milliseconds>", "Request timeout in milliseconds. Overrides 'timeout' in config file.", parseInt)
+  .option(
+    "--use-default-requester [boolean]",
+    "Use the default requester (axios/fetch based). Overrides 'useDefaultRequester' in config file.",
+    (val) => val !== "false"
+  )
+  .option(
+    "--get-token-module-path <path>",
+    "Path to the module exporting 'getToken' for the default requester. Overrides 'defaultRequesterConfig.getTokenModulePath'."
+  )
+  .option(
+    "--get-token-export-name <name>",
+    `Export name for 'getToken' function (default: "${DEFAULT_GET_TOKEN_EXPORT_NAME}"). Overrides 'defaultRequesterConfig.getTokenExportName'.`
+  )
+  .option(
+    "--custom-requester-path <path>",
+    `Path to your custom requester module (default: "${DEFAULT_CUSTOM_REQUESTER_FILE_PATH}"). Overrides 'customRequesterConfig.filePath'.`
+  )
+  .option(
+    "--custom-requester-export-name <name>",
+    `Export name for your custom requester (default: "${DEFAULT_CUSTOM_REQUESTER_EXPORT_NAME}"). Overrides 'customRequesterConfig.exportName'.`
+  )
+  .option(
+    "--generated-client-module-basename <name>",
+    "Basename for the auto-generated client module (e.g., 'client' -> user/client.ts). Overrides 'generatedClientModuleBasename'."
+  )
+  .option(
+    "--prettier [boolean]",
+    "Enable or disable Prettier formatting. Overrides 'formatWithPrettier' in config file.",
+    (val) => val !== "false"
+  )
   .option(
     "--prettier-config-path <path>",
-    "Path to a custom Prettier configuration file (overrides config file setting)"
+    "Path to a custom Prettier configuration file. Overrides 'prettierConfigPath'."
   )
   .option(
-    "--adapter-path <path>",
-    "Path for the custom requester adapter file (e.g., src/api/sgClientSetup.ts). Used if useDefaultRequester is false."
+    "--generate-hooks [boolean]",
+    "Generate React Query hooks. Overrides 'generateHooks' in config file.",
+    (val) => val !== "false"
   )
   .option(
-    "--scaffold-adapter / --no-scaffold-adapter",
-    "Enable or disable scaffolding of the custom requester adapter file if it doesn\'t exist. Used if useDefaultRequester is false."
-  )
-  .option(
-    "--strip-path-prefix <prefix>",
-    "A string prefix to strip from the beginning of all paths from the OpenAPI spec (e.g., /api)"
+    "--generate-functions [boolean]",
+    "Generate API client functions. Overrides 'generateFunctions' in config file.",
+    (val) => val !== "false"
   );
 
 program.parse(process.argv);
+const cliArgs = program.opts<CliOptions>();
 
-// Use the extended options type here
-const options = program.opts<CliGeneratorOptions>();
+async function main() {
+  let userConfigFromFile: Partial<PackageConfig> = {};
+  let effectiveConfigPath: string | undefined = cliArgs.config;
 
-let userConfig: ParserConfig = {};
-let effectiveConfigPath: string | undefined = options.config;
-
-if (!effectiveConfigPath) {
-  const defaultConfigPath = path.resolve(process.cwd(), DEFAULT_CONFIG_FILENAME);
-  if (fs.existsSync(defaultConfigPath)) {
-    console.log(`No --config specified, found default config file: ${defaultConfigPath}`);
-    effectiveConfigPath = defaultConfigPath; // Use default path
-  } else {
-    console.log(`No --config specified and no default '${DEFAULT_CONFIG_FILENAME}' found in CWD.`);
-  }
-}
-
-if (effectiveConfigPath) {
-  try {
-    // Ensure effectiveConfigPath is absolute if it came from default discovery
-    // If it came from options.config, path.resolve will also make it absolute or handle it if already absolute.
-    const absoluteConfigPath = path.resolve(process.cwd(), effectiveConfigPath);
-    const loadedConfigModule = require(absoluteConfigPath);
-    if (loadedConfigModule && loadedConfigModule.config) {
-      userConfig = loadedConfigModule.config as ParserConfig;
-      console.log(`Loaded configuration from: ${absoluteConfigPath}`);
+  if (!effectiveConfigPath) {
+    const defaultConfigPathInCwd = path.resolve(process.cwd(), DEFAULT_CONFIG_FILENAME);
+    if (fs.existsSync(defaultConfigPathInCwd)) {
+      console.log(`No --config specified, found default config file: ${defaultConfigPathInCwd}`);
+      effectiveConfigPath = defaultConfigPathInCwd;
     } else {
-      console.error(`Error: Configuration file at '${absoluteConfigPath}' must export a 'config' object.`);
+      console.log(`No --config specified and no default '${DEFAULT_CONFIG_FILENAME}' found in CWD.`);
+    }
+  }
+
+  if (effectiveConfigPath) {
+    try {
+      const absoluteConfigPath = path.resolve(process.cwd(), effectiveConfigPath);
+      const loadedModule = await import(absoluteConfigPath).catch(async (err) => {
+        if (
+          err.code === "ERR_MODULE_NOT_FOUND" ||
+          err.message?.includes("Cannot use import statement outside a module")
+        ) {
+          return require(absoluteConfigPath);
+        }
+        throw err;
+      });
+
+      if (loadedModule && (loadedModule.config || loadedModule.default)) {
+        userConfigFromFile = (loadedModule.config || loadedModule.default) as Partial<PackageConfig>;
+        console.log(`Loaded configuration from: ${absoluteConfigPath}`);
+      } else {
+        console.error(
+          `Error: Configuration file at '${absoluteConfigPath}' must export a 'config' object or have a default export.`
+        );
+        process.exit(1);
+      }
+    } catch (e: any) {
+      console.error(`Error loading configuration file '${effectiveConfigPath}': ${e.message}`);
       process.exit(1);
     }
-  } catch (e: any) {
-    console.error(`Error loading configuration file '${effectiveConfigPath}': ${e.message}`);
+  }
+
+  let mergedConfig: Partial<PackageConfig> = { ...baseDefaultConfig }; // Start with base defaults
+  mergedConfig = { ...mergedConfig, ...userConfigFromFile }; // Merge with file config
+
+  // Merge CLI arguments (highest precedence)
+  if (cliArgs.input !== undefined) mergedConfig.input = cliArgs.input;
+  mergedConfig.outputDir = cliArgs.output; // output is requiredOption
+  if (cliArgs.baseURL !== undefined) mergedConfig.baseURL = cliArgs.baseURL;
+  if (cliArgs.timeout !== undefined) mergedConfig.timeout = cliArgs.timeout;
+  if (cliArgs.useDefaultRequester !== undefined) mergedConfig.useDefaultRequester = cliArgs.useDefaultRequester;
+  if (cliArgs.generatedClientModuleBasename !== undefined)
+    mergedConfig.generatedClientModuleBasename = cliArgs.generatedClientModuleBasename;
+  if (cliArgs.prettier !== undefined) mergedConfig.formatWithPrettier = cliArgs.prettier;
+  if (cliArgs.prettierConfigPath !== undefined) mergedConfig.prettierConfigPath = cliArgs.prettierConfigPath;
+  if (cliArgs.generateHooks !== undefined) mergedConfig.generateHooks = cliArgs.generateHooks;
+  if (cliArgs.generateFunctions !== undefined) mergedConfig.generateFunctions = cliArgs.generateFunctions;
+
+  // Handle nested defaultRequesterConfig
+  const getTokenModulePathFromFile = userConfigFromFile.defaultRequesterConfig?.getTokenModulePath;
+  const getTokenExportNameFromFile = userConfigFromFile.defaultRequesterConfig?.getTokenExportName;
+
+  // getTokenModulePath can be undefined at this stage. It's validated later.
+  const tempGetTokenModulePath = cliArgs.getTokenModulePath ?? getTokenModulePathFromFile;
+  const tempGetTokenExportName =
+    cliArgs.getTokenExportName ?? getTokenExportNameFromFile ?? DEFAULT_GET_TOKEN_EXPORT_NAME;
+
+  if (
+    tempGetTokenModulePath !== undefined ||
+    tempGetTokenExportName !== DEFAULT_GET_TOKEN_EXPORT_NAME ||
+    userConfigFromFile.defaultRequesterConfig
+  ) {
+    mergedConfig.defaultRequesterConfig = {
+      getTokenModulePath: tempGetTokenModulePath, // This is string | undefined
+      getTokenExportName: tempGetTokenExportName,
+    };
+  }
+
+  // Handle nested customRequesterConfig
+  const customRequesterFilePathFromFile = userConfigFromFile.customRequesterConfig?.filePath;
+  const customRequesterExportNameFromFile = userConfigFromFile.customRequesterConfig?.exportName;
+
+  mergedConfig.customRequesterConfig = {
+    filePath: cliArgs.customRequesterPath ?? customRequesterFilePathFromFile ?? DEFAULT_CUSTOM_REQUESTER_FILE_PATH,
+    exportName:
+      cliArgs.customRequesterExportName ?? customRequesterExportNameFromFile ?? DEFAULT_CUSTOM_REQUESTER_EXPORT_NAME,
+  };
+
+  // --- Resolve configuration (Applying final defaults from baseDefaultConfig and validating) ---
+  if (!mergedConfig.input) {
+    console.error("Error: 'input' (OpenAPI spec path or object) is required. Provide via --input or in config file.");
+    process.exit(1);
+  }
+
+  const resolvedPackageConfig: ResolvedPackageConfig = {
+    input: mergedConfig.input,
+    outputDir: mergedConfig.outputDir!, // Already validated by commander
+    baseURL: mergedConfig.baseURL,
+    headers: mergedConfig.headers,
+    useDefaultRequester: mergedConfig.useDefaultRequester ?? baseDefaultConfig.useDefaultRequester!,
+    customRequesterConfig: {
+      filePath: mergedConfig.customRequesterConfig!.filePath!, // Now guaranteed by above merge logic
+      exportName: mergedConfig.customRequesterConfig!.exportName!, // Now guaranteed
+    },
+    generatedClientModuleBasename:
+      mergedConfig.generatedClientModuleBasename ?? baseDefaultConfig.generatedClientModuleBasename!,
+    formatWithPrettier: mergedConfig.formatWithPrettier ?? baseDefaultConfig.formatWithPrettier!,
+    prettierConfigPath: mergedConfig.prettierConfigPath,
+    timeout: mergedConfig.timeout ?? baseDefaultConfig.timeout!,
+    generateHooks: mergedConfig.generateHooks ?? baseDefaultConfig.generateHooks!,
+    generateFunctions: mergedConfig.generateFunctions ?? baseDefaultConfig.generateFunctions!,
+    defaultRequesterConfig: undefined, // Initialize, will be set if useDefaultRequester is true
+  };
+
+  if (resolvedPackageConfig.useDefaultRequester) {
+    const finalGetTokenModulePath = mergedConfig.defaultRequesterConfig?.getTokenModulePath;
+    if (!finalGetTokenModulePath) {
+      console.error(
+        "Error: 'defaultRequesterConfig.getTokenModulePath' is required when 'useDefaultRequester' is true. Provide via --get-token-module-path or in config file."
+      );
+      process.exit(1);
+    }
+    resolvedPackageConfig.defaultRequesterConfig = {
+      getTokenModulePath: finalGetTokenModulePath,
+      getTokenExportName: mergedConfig.defaultRequesterConfig!.getTokenExportName!, // Guaranteed by merge logic
+    };
+  }
+
+  // The GeneratorOptions (CoreGeneratorOptions) interface in src/index.ts
+  // has been updated to { packageConfig: ResolvedPackageConfig, requestConfig: RequestConfig }
+  // So, this structure should now match directly.
+  const generatorOptions: CoreGeneratorOptions = {
+    packageConfig: resolvedPackageConfig,
+    requestConfig: {
+      baseURL: resolvedPackageConfig.baseURL,
+      timeout: resolvedPackageConfig.timeout,
+      headers: resolvedPackageConfig.headers,
+    },
+  };
+
+  try {
+    await runGenerator(generatorOptions);
+    console.log(`API client generated successfully in ${resolvedPackageConfig.outputDir}`);
+  } catch (error: any) {
+    console.error(`Error during code generation: ${error.message}`);
+    if (error.stack) {
+      console.error(error.stack);
+    }
     process.exit(1);
   }
 }
 
-// Merge packageConfig from file with defaults, potentially overridden by input
-const finalPackageConfig: Partial<PackageConfig> = {
-  ...defaultPackageConfig, // Start with defaults
-  ...userConfig.packageConfig, // Apply config file's packageConfig
-};
-
-// If options.input is provided, it can be used as baseURL if not in config
-if (options.input) {
-  if (!finalPackageConfig.baseURL) {
-    console.log(`Using baseURL from --input: ${options.input}`);
-    finalPackageConfig.baseURL = options.input;
-  } else {
-    console.log(
-      `Using baseURL from config file: ${finalPackageConfig.baseURL}. (--input '${options.input}' is ignored for baseURL when config provides it).`
-    );
-  }
-}
-
-// Override Prettier settings from CLI if provided
-if (options.prettier !== undefined) {
-  finalPackageConfig.formatWithPrettier = options.prettier;
-  console.log(`Prettier formatting ${options.prettier ? "enabled" : "disabled"} via CLI.`);
-}
-if (options.prettierConfigPath !== undefined) {
-  finalPackageConfig.prettierConfigPath = options.prettierConfigPath;
-  console.log(`Using Prettier config path from CLI: ${options.prettierConfigPath}`);
-}
-
-// Override Adapter settings from CLI if provided
-if (options.adapterPath !== undefined) {
-  finalPackageConfig.customRequesterAdapterPath = options.adapterPath;
-  console.log(`Custom requester adapter path set via CLI: ${options.adapterPath}`);
-}
-if (options.scaffoldAdapter !== undefined) {
-  finalPackageConfig.scaffoldRequesterAdapter = options.scaffoldAdapter;
-  console.log(`Scaffolding for custom requester adapter ${options.scaffoldAdapter ? "enabled" : "disabled"} via CLI.`);
-}
-
-// Override stripPathPrefix from CLI if provided
-if (options.stripPathPrefix !== undefined) {
-  finalPackageConfig.stripPathPrefix = options.stripPathPrefix;
-  if (options.stripPathPrefix === "") {
-    // Handle case where user provides an empty string to effectively unset it
-    finalPackageConfig.stripPathPrefix = undefined;
-    console.log(`Path prefix stripping disabled via CLI (empty prefix).`);
-  } else {
-    console.log(`Path prefix to strip set via CLI: "${options.stripPathPrefix}"`);
-  }
-}
-
-// Validate that either input URL/path or a baseURL from config is provided
-if (!finalPackageConfig.baseURL) {
-  console.error(
-    "Error: A baseURL must be provided either via the --input option, a config file, or the default 'sg-schema-sync.config.js'."
-  );
-  process.exit(1);
-}
-
-// Prepare the generator options
-// The CoreGeneratorOptions interface will need to be updated to accept ParserConfig
-// For now, let's assume CoreGeneratorOptions is updated like this:
-// export interface GeneratorOptions {
-//   output: string;
-//   reactQuery?: boolean;
-//   parserConfig: ParserConfig;
-// }
-
-const generatorOptions: CoreGeneratorOptions = {
-  output: options.output,
-  // reactQuery is now determined by packageConfig.generateHooks
-  // The GeneratorOptions interface still expects reactQuery, so we derive it.
-  reactQuery: finalPackageConfig.generateHooks,
-  parserConfig: {
-    packageConfig: finalPackageConfig,
-    requestConfig: userConfig.requestConfig || {}, // Use requestConfig from file or default to empty
-  },
-};
-
-runGenerator(generatorOptions).catch((error) => {
+main().catch((e) => {
+  console.error(`Unhandled error in CLI: ${e.message}`);
   process.exit(1);
 });
