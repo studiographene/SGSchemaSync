@@ -43,7 +43,7 @@ export async function generateFilesForTag(
   const tagImportName = toTsIdentifier(tagName) + "Types";
   // Use the sanitized tag name for the file path
   const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
-  functionsContent += `import * as ${tagImportName} from './types';\n\n`;
+  // This will be added conditionally later
 
   const generatedTypeNames = new Set<string>(); // Track generated types for this tag
   const functionFactoryNames: string[] = []; // Initialize
@@ -405,12 +405,47 @@ export async function generateFilesForTag(
     }
   } // End loop through operations
 
+  // Conditionally add import for './types' to functionsContent
+  if (generatedTypeNames.size > 0) {
+    // Insert it after the requester import but before the first function definition.
+    // A simple way is to prepend it to the collected function strings if we know there's other content.
+    // Or, more robustly, rebuild functionsContent if we need precise placement.
+    // For now, let's find a marker or prepend to the accumulated functions string part.
+    // Let's adjust how functionsContent is built to make this cleaner.
+    // We'll collect all function strings and then prepend imports.
+
+    let allFunctionStrings = "";
+    for (const funcName of functionFactoryNames) {
+      // This assumes functionString was the last one generated and corresponds to funcName.
+      // This is a bit of a simplification; ideally, we'd store all functionStrings.
+      // For this refactor, we'll assume 'functionsContent' holds all generated function strings
+      // after the initial banner and requester import.
+      // This part needs refinement if we want to re-use 'functionString'
+    }
+    // The actual function strings are already in 'functionsContent'.
+    // We need to insert the import.
+    // A simpler approach: construct the core content, then add imports at the top.
+
+    // Let's rebuild functionsContent to ensure correct order
+    let finalFunctionsContent = `${functionTopBanner}\n\n${standardFileComment}\n\n`;
+    finalFunctionsContent += `// Imports for the requester mechanism\n`;
+    finalFunctionsContent += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
+    finalFunctionsContent += `import * as ${tagImportName} from './types';\n\n`; // Added conditionally
+    finalFunctionsContent += functionsContent.substring(
+      functionsContent.indexOf("/*---") // Assuming operation group banners start like this
+    ); // Append the actual function definitions
+    functionsContent = finalFunctionsContent;
+  }
+
   // --- Add Imports and Header to hooksContent if needed ---
   if (reactQueryEnabled && hooksGenerated) {
     const hookTopBanner = createTopLevelBanner("hooks");
     let finalHooksImports = `// Imports for the requester mechanism and TanStack Query\n`;
     finalHooksImports += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
-    finalHooksImports += `import * as ${tagImportName} from './types';\n`;
+    if (generatedTypeNames.size > 0) {
+      // Conditional import for types
+      finalHooksImports += `import * as ${tagImportName} from './types';\n`;
+    }
 
     const tanstackImports = ["QueryKey", "useMutation", "UseMutationOptions", "useQuery", "UseQueryOptions"].sort();
     finalHooksImports += `import {\n  ${tanstackImports.join(",\n  ")}\n} from '@tanstack/react-query';\n`;
