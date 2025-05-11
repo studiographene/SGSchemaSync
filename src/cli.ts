@@ -24,6 +24,7 @@ interface CliOptions extends Partial<Omit<PackageConfig, "defaultRequesterConfig
   config?: string;
   output: string;
   prettier?: boolean;
+  verbose?: boolean;
 
   getTokenModulePath?: string;
   getTokenExportName?: string;
@@ -102,7 +103,8 @@ program
   .option(
     "--strip-path-prefix <prefix>",
     "Strip path prefix from generated client module names. Overrides 'stripPathPrefix' in config file."
-  );
+  )
+  .option("--verbose", "Enable verbose logging. Overrides 'verbose' in config file.");
 
 program.parse(process.argv);
 const cliArgs = program.opts<CliOptions>();
@@ -173,6 +175,7 @@ async function main() {
   if (cliArgs.generateFunctions !== undefined) mergedConfig.generateFunctions = cliArgs.generateFunctions;
   if (cliArgs.scaffoldRequester !== undefined) mergedConfig.scaffoldRequesterAdapter = cliArgs.scaffoldRequester;
   if (cliArgs.stripPathPrefix !== undefined) mergedConfig.stripPathPrefix = cliArgs.stripPathPrefix;
+  if (cliArgs.verbose !== undefined) mergedConfig.verbose = cliArgs.verbose;
 
   // Handle nested defaultRequesterConfig
   const getTokenModulePathFromFile = userConfigFromFile.defaultRequesterConfig?.getTokenModulePath;
@@ -229,6 +232,7 @@ async function main() {
     generateFunctions: mergedConfig.generateFunctions ?? baseDefaultConfig.generateFunctions!,
     scaffoldRequesterAdapter: mergedConfig.scaffoldRequesterAdapter ?? baseDefaultConfig.scaffoldRequesterAdapter!,
     stripPathPrefix: mergedConfig.stripPathPrefix,
+    verbose: mergedConfig.verbose ?? baseDefaultConfig.verbose!,
     defaultRequesterConfig: undefined, // Initialize, will be set if useDefaultRequester is true
   };
 

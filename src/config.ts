@@ -135,6 +135,11 @@ export interface PackageConfig {
    * @default true
    */
   scaffoldRequesterAdapter?: boolean;
+  /**
+   * Enable verbose logging output.
+   * @default false
+   */
+  verbose?: boolean;
 }
 
 /**
@@ -153,6 +158,7 @@ export interface ResolvedPackageConfig
     | "generateHooks"
     | "generateFunctions"
     // `scaffoldRequesterAdapter` is optional and carries over, no need to list in Omit
+    // `verbose` is optional and carries over, no need to list in Omit
   > {
   input: string | Record<string, any>; // Required
   outputDir: string; // Required
@@ -173,6 +179,7 @@ export interface ResolvedPackageConfig
   generateHooksNames?: string;
   stripPathPrefix?: string;
   scaffoldRequesterAdapter: boolean; // Required in Resolved, default applied
+  verbose: boolean; // Required in Resolved, default applied
 }
 
 // Helper function to load and resolve configuration (conceptual)
@@ -204,6 +211,7 @@ export async function loadAndResolveConfig(
   const generateHooks = mergedConfig.generateHooks ?? true;
   const generateFunctions = mergedConfig.generateFunctions ?? true;
   const scaffoldRequesterAdapter = mergedConfig.scaffoldRequesterAdapter ?? true; // Default to true
+  const verbose = mergedConfig.verbose ?? false; // Default to false
 
   // Resolve new naming and path stripping properties, falling back to defaults from defaultConfig
   const generateFunctionNames = mergedConfig.generateFunctionNames ?? defaultConfig.generateFunctionNames;
@@ -260,10 +268,11 @@ export async function loadAndResolveConfig(
     generateHooksNames,
     stripPathPrefix,
     scaffoldRequesterAdapter,
+    verbose,
     // Conditionally required
     ...(useDefaultRequester &&
       resolvedDefaultRequesterConfig && { defaultRequesterConfig: resolvedDefaultRequesterConfig }),
-  };
+  } as ResolvedPackageConfig;
 }
 
 // Default configuration
@@ -279,9 +288,8 @@ export const defaultConfig: Partial<PackageConfig> = {
   generateFunctionNames: "{method}{Endpoint}",
   generateTypesNames: "{Method}{Endpoint}Types",
   generateHooksNames: "use{Method}{Endpoint}",
-  scaffoldRequesterAdapter: true, // Default value
-  // stripPathPrefix is implicitly undefined as it's optional in PackageConfig
-  // stripPathPrefix: undefined, // Can be omitted
+  scaffoldRequesterAdapter: true, // Default for scaffolding custom adapter
+  verbose: false, // Default for verbose
   customRequesterConfig: {
     filePath: "schema-sync-requester.ts",
     exportName: "SchemaSyncRequester",

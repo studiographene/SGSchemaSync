@@ -31,11 +31,13 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
   const { packageConfig, requestConfig } = options;
 
   console.log(`Starting API client generation...`);
-  console.log(`Base output directory: ${packageConfig.outputDir}`);
-  console.log(`Generate React Query hooks: ${packageConfig.generateHooks ? "Yes" : "No"}`);
-  if (packageConfig.useDefaultRequester) {
-    console.log(`Default requester client file logic will be applied.`);
-    // The actual file generation logic using generatedClientModuleBasename is further down
+  if (packageConfig.verbose) {
+    console.log(`Base output directory: ${packageConfig.outputDir}`);
+    console.log(`Generate React Query hooks: ${packageConfig.generateHooks ? "Yes" : "No"}`);
+    if (packageConfig.useDefaultRequester) {
+      console.log(`Default requester client file logic will be applied.`);
+    }
+    console.log(`Verbose logging enabled.`);
   }
 
   const baseOutputDir = path.resolve(process.cwd(), packageConfig.outputDir);
@@ -65,9 +67,9 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
     let specToUse: OpenAPIV3.Document;
     try {
-      console.log("Attempting to dereference OpenAPI specification...");
+      if (packageConfig.verbose) console.log("Attempting to dereference OpenAPI specification...");
       specToUse = (await $RefParser.dereference(initialSpec as any)) as OpenAPIV3.Document;
-      console.log("Dereferencing successful.");
+      if (packageConfig.verbose) console.log("Dereferencing successful.");
     } catch (dereferenceError: any) {
       console.warn(`\n⚠️ WARNING: Failed to dereference OpenAPI spec: ${dereferenceError.message}`);
       console.warn("  Proceeding with the original spec. Type generation for $ref schemas may fail.\n");
@@ -95,23 +97,30 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         }
       }
     }
-    console.log(`Found operations grouped by tags: ${Object.keys(operationsByTag).join(", ")}`);
+    if (packageConfig.verbose)
+      console.log(`Found operations grouped by tags: ${Object.keys(operationsByTag).join(", ")}`);
 
     for (const tagName in operationsByTag) {
       const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
-      console.log(`Generating files for tag: ${tagName} (folder: ${sanitizedTagName})...`);
+      if (packageConfig.verbose) console.log(`Generating files for tag: ${tagName} (folder: ${sanitizedTagName})...`);
       const operations = operationsByTag[tagName];
       const tagOutputDir = path.join(baseOutputDir, sanitizedTagName);
       await fs.mkdir(tagOutputDir, { recursive: true });
 
-      const { typesContent, functionsContent, hooksContent, functionFactoryNames, hookFactoryNames } =
-        await generateFilesForTag(
-          tagName,
-          operations,
-          specToUse,
-          packageConfig.generateHooks, // Use resolved config
-          packageConfig // Pass the whole resolved packageConfig
-        );
+      const {
+        typesContent,
+        functionsContent,
+        hooksContent,
+        functionFactoryNames,
+        hookFactoryNames,
+        hasGeneratedTypes,
+      } = await generateFilesForTag(
+        tagName,
+        operations,
+        specToUse,
+        packageConfig.generateHooks, // Use resolved config
+        packageConfig // Pass the whole resolved packageConfig
+      );
 
       const typesFilePath = path.join(tagOutputDir, "types.ts");
       const functionsFilePath = path.join(tagOutputDir, "functions.ts");
@@ -126,6 +135,9 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         await fs.writeFile(hooksFilePath, hooksContent, "utf-8");
         console.log(`  -> Hook factories written to ${hooksFilePath}`);
         hooksFileGenerated = true;
+      }
+      if (packageConfig.verbose && packageConfig.generateHooks && !hooksContent.trim()) {
+        console.log(`  [Info] Hooks were enabled but no hook content generated for tag: ${tagName}`);
       }
 
       generatedTagDetails.push({
@@ -219,7 +231,10 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       console.log(`  -> Client module written to ${clientModuleFilePath}`);
 
       // Generate and write the main index.ts for the tag
-      let indexContent = `export * from './types';\n`;
+      let indexContent = "";
+      if (hasGeneratedTypes) {
+        indexContent += `export * from './types';\n`;
+      }
       indexContent += `export * from './${packageConfig.generatedClientModuleBasename}'; // Exports from the new client module\n`;
       // We no longer directly export factories if useDefaultRequester is false from here;
       // they are consumed by the generated client module which then exports the final instances.
@@ -227,6 +242,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       const indexFilePath = path.join(tagOutputDir, "index.ts");
       await fs.writeFile(indexFilePath, indexContent, "utf-8");
       console.log(`  -> Index file written to ${indexFilePath}`);
+      if (packageConfig.verbose) console.log(`Finished processing tag: ${tagName}`);
     }
 
     // --- Scaffold Custom Requester File (if configured and not using default) ---
@@ -266,23 +282,18 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
     const { formatWithPrettier, prettierConfigPath } = packageConfig || {};
 
     if (formatWithPrettier) {
+      const prettierBin = path.join(process.cwd(), "node_modules", ".bin", "prettier");
+      const prettierArgs = ["--write", `"${baseOutputDir}/**/*.ts"`];
+      if (prettierConfigPath) {
+        prettierArgs.push("--config", prettierConfigPath);
+      }
+      if (packageConfig.verbose) console.log(`Attempting to format output with Prettier...`);
       try {
-        console.log(`Formatting generated files with Prettier in ${baseOutputDir}...`);
-        // Only format .ts files as those are the only ones generated.
-        let prettierCommand = `npx prettier --write "${baseOutputDir}/**/*.ts" --log-level warn`;
-        if (prettierConfigPath) {
-          // Ensure the path is resolved correctly if it's relative
-          const resolvedPrettierConfigPath = path.resolve(process.cwd(), prettierConfigPath);
-          prettierCommand += ` --config "${resolvedPrettierConfigPath}"`;
-          console.log(`  Using Prettier config: ${resolvedPrettierConfigPath}`);
-        }
-        execSync(prettierCommand, { stdio: "inherit" });
-        console.log("Prettier formatting complete.");
-      } catch (prettierError) {
-        console.warn(
-          "\n⚠️ WARNING: Prettier formatting failed. Your files are generated but may not be formatted correctly."
-        );
-        console.warn(prettierError); // Log the error for more details
+        execSync(`${prettierBin} ${prettierArgs.join(" ")}`, { stdio: "inherit" });
+        if (packageConfig.verbose) console.log("Prettier formatting successful.");
+      } catch (error) {
+        console.warn("Prettier formatting failed. Please ensure Prettier is installed and configured correctly.");
+        console.warn(error);
       }
     } else {
       console.log("Prettier formatting skipped as per configuration.");
