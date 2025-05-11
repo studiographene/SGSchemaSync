@@ -376,6 +376,7 @@ export async function generateFilesForTag(
         hooksContent += `      },\n`;
         hooksContent += `      ...(queryOptions || {}),\n`;
         hooksContent += `    });\n`;
+        hooksContent += `  };\n`;
       } else {
         // useMutation
         let mutationVariablesType = "void";
