@@ -59,6 +59,12 @@ export async function generateFilesForTag(
 
   for (const opInfo of operations) {
     const { operation, path, method } = opInfo;
+
+    // Log the values before attempting to strip the prefix
+    console.log(
+      `  [Generator DEBUG] Original path: "${path}", configured stripPathPrefix: "${packageConfig.stripPathPrefix}"`
+    );
+
     const operationId = operation.operationId;
 
     // Apply stripPathPrefix if configured
