@@ -5,5 +5,4 @@ export const clientConfig: Partial<PackageConfig> = {
   generateFunctionNames: "custom{method}{Endpoint}",
   generateTypesNames: "test{Method}{Endpoint}Types",
   generateHooksNames: "use{Method}{Endpoint}Mock",
-  baseDir: "test-output/api/config-test",
 };

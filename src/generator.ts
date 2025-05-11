@@ -10,7 +10,7 @@ import {
   createTopLevelBanner,
   createOperationGroupBanner,
 } from "./helpers/generator-helpers";
-import { PackageConfig, defaultPackageConfig } from "./config";
+import { PackageConfig, defaultConfig } from "./config";
 // NEW: Import requester types
 import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from "./requester-types";
 // Corrected path: ./ instead of ../
@@ -82,15 +82,15 @@ export async function generateFilesForTag(
     const methodPascal = toPascalCase(method);
 
     // Generate names using templates from config
-    const functionName = (packageConfig.generateFunctionNames ?? defaultPackageConfig.generateFunctionNames)
+    const functionName = (packageConfig.generateFunctionNames ?? defaultConfig.generateFunctionNames!)
       .replace("{method}", methodPascal)
       .replace("{Endpoint}", endpointBaseName);
 
-    const typeBaseName = (packageConfig.generateTypesNames ?? defaultPackageConfig.generateTypesNames)
+    const typeBaseName = (packageConfig.generateTypesNames ?? defaultConfig.generateTypesNames!)
       .replace("{Method}", methodPascal)
       .replace("{Endpoint}", endpointBaseName);
 
-    const hookBaseName = (packageConfig.generateHooksNames ?? defaultPackageConfig.generateHooksNames)
+    const hookBaseName = (packageConfig.generateHooksNames ?? defaultConfig.generateHooksNames!)
       .replace("{Method}", methodPascal)
       .replace("{Endpoint}", endpointBaseName);
 
@@ -376,7 +376,6 @@ export async function generateFilesForTag(
         hooksContent += `      },\n`;
         hooksContent += `      ...(queryOptions || {}),\n`;
         hooksContent += `    });\n`;
-        hooksContent += `  };\n`;
       } else {
         // useMutation
         let mutationVariablesType = "void";

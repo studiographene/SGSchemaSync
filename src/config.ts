@@ -106,6 +106,28 @@ export interface PackageConfig {
    * @default true
    */
   generateFunctions?: boolean;
+  /**
+   * Template for generated function names (e.g., "{method}{Endpoint}").
+   * @default "{method}{Endpoint}"
+   */
+  generateFunctionNames?: string;
+  /**
+   * Template for generated type names (e.g., "{Method}{Endpoint}Types").
+   * @default "{Method}{Endpoint}Types"
+   */
+  generateTypesNames?: string;
+  /**
+   * Template for generated hook names (e.g., "use{Method}{Endpoint}").
+   * @default "use{Method}{Endpoint}"
+   */
+  generateHooksNames?: string;
+  /**
+   * Optional string prefix to strip from the beginning of all paths obtained from the OpenAPI specification.
+   * This affects runtime request paths and can influence generated names like hook names or query keys.
+   * Type names will still use the original, unstripped path.
+   * @default undefined
+   */
+  stripPathPrefix?: string;
 }
 
 /**
@@ -114,6 +136,7 @@ export interface PackageConfig {
 export interface ResolvedPackageConfig
   extends Omit<
     PackageConfig,
+    // Properties that have different types or are made required in ResolvedPackageConfig
     | "defaultRequesterConfig"
     | "customRequesterConfig"
     | "useDefaultRequester"
@@ -122,24 +145,29 @@ export interface ResolvedPackageConfig
     | "timeout"
     | "generateHooks"
     | "generateFunctions"
+    // input and outputDir are also handled specially but are not in Omit as they are directly in PackageConfig and re-declared
   > {
-  input: string | Record<string, any>;
-  outputDir: string;
+  input: string | Record<string, any>; // Required
+  outputDir: string; // Required
   baseURL?: string;
   headers?: Record<string, string>;
-  useDefaultRequester: boolean;
-  defaultRequesterConfig?: Required<DefaultRequesterConfig>;
-  customRequesterConfig: Required<CustomRequesterConfig>;
-  generatedClientModuleBasename: string;
-  formatWithPrettier: boolean;
+  useDefaultRequester: boolean; // Required, default applied
+  defaultRequesterConfig?: Required<DefaultRequesterConfig>; // Made Required if useDefaultRequester is true
+  customRequesterConfig: Required<CustomRequesterConfig>; // Made Required
+  generatedClientModuleBasename: string; // Required, default applied
+  formatWithPrettier: boolean; // Required, default applied
   prettierConfigPath?: string;
-  timeout: number;
-  generateHooks: boolean;
-  generateFunctions: boolean;
+  timeout: number; // Required, default applied
+  generateHooks: boolean; // Required, default applied
+  generateFunctions: boolean; // Required, default applied
+  // New properties from PackageConfig, carried over (optional)
+  generateFunctionNames?: string;
+  generateTypesNames?: string;
+  generateHooksNames?: string;
+  stripPathPrefix?: string;
 }
 
 // Helper function to load and resolve configuration (conceptual)
-// You would implement this in your CLI or main orchestrator
 export async function loadAndResolveConfig(
   configPath?: string,
   cliOptions: Partial<PackageConfig> = {}
@@ -154,18 +182,25 @@ export async function loadAndResolveConfig(
   }
 
   const mergedConfig: Partial<PackageConfig> = {
-    ...userConfig,
-    ...cliOptions, // CLI options take precedence
+    ...defaultConfig, // Start with internal defaults
+    ...userConfig, // Layer user config file
+    ...cliOptions, // CLI options take highest precedence
   };
 
   // Apply defaults and resolve
-  const outputDir = mergedConfig.outputDir || "./src/api"; // Default outputDir
+  const outputDir = mergedConfig.outputDir || "./src/api"; // Should have been set by defaultConfig
   const useDefaultRequester = mergedConfig.useDefaultRequester ?? false;
   const generatedClientModuleBasename = mergedConfig.generatedClientModuleBasename ?? "client";
   const formatWithPrettier = mergedConfig.formatWithPrettier ?? true;
   const timeout = mergedConfig.timeout ?? 10000;
   const generateHooks = mergedConfig.generateHooks ?? true;
   const generateFunctions = mergedConfig.generateFunctions ?? true;
+
+  // Resolve new naming and path stripping properties, falling back to defaults from defaultConfig
+  const generateFunctionNames = mergedConfig.generateFunctionNames ?? defaultConfig.generateFunctionNames;
+  const generateTypesNames = mergedConfig.generateTypesNames ?? defaultConfig.generateTypesNames;
+  const generateHooksNames = mergedConfig.generateHooksNames ?? defaultConfig.generateHooksNames;
+  const stripPathPrefix = mergedConfig.stripPathPrefix ?? defaultConfig.stripPathPrefix;
 
   let resolvedDefaultRequesterConfig: Required<DefaultRequesterConfig> | undefined = undefined;
   if (useDefaultRequester) {
@@ -181,8 +216,14 @@ export async function loadAndResolveConfig(
   }
 
   const resolvedCustomRequesterConfig: Required<CustomRequesterConfig> = {
-    filePath: mergedConfig.customRequesterConfig?.filePath ?? "./sg-requester.ts",
-    exportName: mergedConfig.customRequesterConfig?.exportName ?? "SchemaSyncRequester",
+    filePath:
+      mergedConfig.customRequesterConfig?.filePath ??
+      defaultConfig.customRequesterConfig?.filePath ??
+      "./sg-requester.ts",
+    exportName:
+      mergedConfig.customRequesterConfig?.exportName ??
+      defaultConfig.customRequesterConfig?.exportName ??
+      "SchemaSyncRequester",
   };
 
   if (!mergedConfig.input) {
@@ -204,14 +245,20 @@ export async function loadAndResolveConfig(
     baseURL: mergedConfig.baseURL,
     headers: mergedConfig.headers,
     prettierConfigPath: mergedConfig.prettierConfigPath,
+    // Add new resolved properties
+    generateFunctionNames,
+    generateTypesNames,
+    generateHooksNames,
+    stripPathPrefix,
     // Conditionally required
     ...(useDefaultRequester &&
       resolvedDefaultRequesterConfig && { defaultRequesterConfig: resolvedDefaultRequesterConfig }),
   };
 }
 
-// Default configuration (if you have one, ensure it aligns or remove if loadAndResolveConfig handles all defaults)
+// Default configuration
 export const defaultConfig: Partial<PackageConfig> = {
+  // No 'input' here, as it's required from the user (CLI or config file)
   outputDir: "./src/api",
   useDefaultRequester: false,
   generatedClientModuleBasename: "client",
@@ -219,10 +266,17 @@ export const defaultConfig: Partial<PackageConfig> = {
   timeout: 10000,
   generateHooks: true,
   generateFunctions: true,
+  generateFunctionNames: "{method}{Endpoint}",
+  generateTypesNames: "{Method}{Endpoint}Types",
+  generateHooksNames: "use{Method}{Endpoint}",
+  // stripPathPrefix is implicitly undefined as it's optional in PackageConfig
+  // stripPathPrefix: undefined, // Can be omitted
   customRequesterConfig: {
     filePath: "./sg-requester.ts",
     exportName: "SchemaSyncRequester",
   },
+  // defaultRequesterConfig is not set here as it depends on useDefaultRequester being true
+  // and getTokenModulePath would be required.
 };
 
 // Base configuration combining parser and package settings
