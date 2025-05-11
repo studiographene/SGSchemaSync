@@ -10,7 +10,7 @@ import {
   createTopLevelBanner,
   createOperationGroupBanner,
 } from "./helpers/generator-helpers";
-import { PackageConfig, defaultConfig } from "./config";
+import { PackageConfig, ResolvedPackageConfig, defaultConfig } from "./config";
 // NEW: Import requester types
 import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from "./requester-types";
 // Corrected path: ./ instead of ../
@@ -20,7 +20,7 @@ export async function generateFilesForTag(
   operations: OperationInfo[],
   spec: OpenAPIV3.Document,
   reactQueryEnabled: boolean,
-  packageConfig: Partial<PackageConfig>
+  packageConfig: ResolvedPackageConfig
 ): Promise<{
   typesContent: string;
   functionsContent: string;
@@ -376,7 +376,6 @@ export async function generateFilesForTag(
         hooksContent += `      },\n`;
         hooksContent += `      ...(queryOptions || {}),\n`;
         hooksContent += `    });\n`;
-        hooksContent += `  };\n`;
       } else {
         // useMutation
         let mutationVariablesType = "void";

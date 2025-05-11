@@ -322,7 +322,7 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
     ```
 2.  **Implement `getToken`:**
     Ensure your `getToken` module (e.g., `src/utils/auth.ts`) correctly exports a function that returns `Promise<string | null>`:
-    ```typescript
+```typescript
     // src/utils/auth.ts
     export const getToken = async (): Promise<string | null> => {
       // Your logic to retrieve the token, e.g., from localStorage, async storage, state manager
@@ -332,7 +332,7 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
 3.  **Run `pnpm sg-schema-sync`**
 4.  **Use in your application:**
     The generated `<tag>/client.ts` files will automatically use this setup.
-    ```typescript
+```typescript
     // Assuming your outputDir is src/api/generated and you have a 'users' tag
     import { GetUserById, useGetUserById } from '@/api/generated/users'; 
     // Types are also re-exported:
@@ -356,9 +356,9 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
     function UserProfile({ userId }: { userId: string }) {
       // Pass params as an object: { pathParams: { userId }, queryParams: { ... } }
       const { data: user, isLoading, error } = useGetUserById({ pathParams: { userId } }); 
-      // ... render logic ...
-    }
-    ```
+  // ... render logic ...
+}
+```
 
 ### Scenario 2: Using a Custom Requester
 **(Set `useDefaultRequester: false` in `sg-schema-sync.config.js`)**
