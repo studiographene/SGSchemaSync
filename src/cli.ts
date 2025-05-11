@@ -124,13 +124,20 @@ async function main() {
       });
 
       if (loadedModule && (loadedModule.config || loadedModule.default)) {
-        userConfigFromFile = (loadedModule.config || loadedModule.default) as Partial<PackageConfig>;
-        console.log(`Loaded configuration from: ${absoluteConfigPath}`);
-      } else {
-        console.error(
-          `Error: Configuration file at '${absoluteConfigPath}' must export a 'config' object or have a default export.`
-        );
-        process.exit(1);
+        const rawFileExport = loadedModule.config || loadedModule.default;
+        if (rawFileExport) {
+          if (rawFileExport.packageConfig && typeof rawFileExport.packageConfig === "object") {
+            userConfigFromFile = rawFileExport.packageConfig as Partial<PackageConfig>;
+          } else {
+            userConfigFromFile = rawFileExport as Partial<PackageConfig>;
+          }
+          console.log(`Loaded configuration from: ${absoluteConfigPath}`);
+        } else {
+          console.error(
+            `Error: Configuration file at '${absoluteConfigPath}' must export a 'config' object or have a default export.`
+          );
+          process.exit(1);
+        }
       }
     } catch (e: any) {
       console.error(`Error loading configuration file '${effectiveConfigPath}': ${e.message}`);
@@ -139,7 +146,9 @@ async function main() {
   }
 
   let mergedConfig: Partial<PackageConfig> = { ...baseDefaultConfig }; // Start with base defaults
-  mergedConfig = { ...mergedConfig, ...userConfigFromFile }; // Merge with file config
+
+  // Merge with the (potentially nested) packageConfig from the file
+  mergedConfig = { ...mergedConfig, ...userConfigFromFile };
 
   // Merge CLI arguments (highest precedence)
   if (cliArgs.input !== undefined) mergedConfig.input = cliArgs.input;
