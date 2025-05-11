@@ -40,6 +40,16 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
   const baseOutputDir = path.resolve(process.cwd(), packageConfig.outputDir);
 
+  let actualAbsoluteCustomRequesterPath: string | undefined;
+  if (!packageConfig.useDefaultRequester && packageConfig.customRequesterConfig?.filePath) {
+    const configuredPath = packageConfig.customRequesterConfig.filePath;
+    if (path.isAbsolute(configuredPath)) {
+      actualAbsoluteCustomRequesterPath = configuredPath;
+    } else {
+      actualAbsoluteCustomRequesterPath = path.resolve(baseOutputDir, configuredPath);
+    }
+  }
+
   const generatedTagDetails: Array<{
     tagName: string;
     sanitizedTagName: string;
@@ -159,7 +169,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         clientModuleContent += `import { ${packageConfig.defaultRequesterConfig.getTokenExportName} as getToken } from '${relativeToGetToken.startsWith(".") ? relativeToGetToken : "./" + relativeToGetToken}';\n`;
         clientModuleContent += `import { createDefaultSGSyncRequester } from \'sg-schema-sync/default-requester\'; // Adjust path if needed\\n\\n`;
         clientModuleContent += `const ${requesterInstanceName}: SGSyncRequester = createDefaultSGSyncRequester({\\n`;
-        clientModuleContent += `  baseURL: \"${packageConfig.baseURL?.replace(/'/g, "\\\'") ?? ""}\",\\n`;
+        clientModuleContent += `  baseURL: "${packageConfig.baseURL?.replace(/'/g, "\\'") ?? ""}",\\n`;
         clientModuleContent += `  timeout: ${packageConfig.timeout},\\n`;
         if (packageConfig.headers) {
           clientModuleContent += `  headers: ${JSON.stringify(packageConfig.headers)},\\n`;
@@ -168,11 +178,16 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         clientModuleContent += `});\\n\\n`;
       } else {
         // Custom requester
-        if (!packageConfig.customRequesterConfig?.filePath) {
-          throw new Error("Logic error: custom requester filePath is required but not found.");
+        if (!actualAbsoluteCustomRequesterPath) {
+          // This check ensures that if we are using a custom requester, its path has been resolved.
+          // packageConfig.customRequesterConfig.filePath and exportName are guaranteed by ResolvedPackageConfig if !useDefaultRequester
+          throw new Error(
+            "Logic error: actualAbsoluteCustomRequesterPath is not defined even though custom requester is selected."
+          );
         }
+
         const relativeToCustomRequester = path
-          .relative(tagOutputDir, path.resolve(process.cwd(), packageConfig.customRequesterConfig.filePath))
+          .relative(tagOutputDir, actualAbsoluteCustomRequesterPath)
           .replace(/\\\\/g, "/");
 
         requesterInstanceName = packageConfig.customRequesterConfig.exportName;
@@ -214,43 +229,35 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
     }
 
     // --- Scaffold Custom Requester File (if configured and not using default) ---
-    if (!packageConfig.useDefaultRequester && packageConfig.customRequesterConfig) {
-      let customRequesterFullPath: string;
-      const configuredPath = packageConfig.customRequesterConfig.filePath;
+    if (
+      !packageConfig.useDefaultRequester &&
+      packageConfig.customRequesterConfig &&
+      actualAbsoluteCustomRequesterPath
+    ) {
+      // Use the pre-calculated actualAbsoluteCustomRequesterPath for scaffolding
+      const customRequesterDir = path.dirname(actualAbsoluteCustomRequesterPath);
 
-      if (path.isAbsolute(configuredPath)) {
-        customRequesterFullPath = configuredPath;
-      } else {
-        // Resolve relative paths from the baseOutputDir, not cwd()
-        // This ensures a simple filename like "schema-sync-requester.ts" goes into the main output folder
-        customRequesterFullPath = path.resolve(baseOutputDir, configuredPath);
-      }
+      const scaffoldEnabled = packageConfig.scaffoldRequesterAdapter;
 
-      const customRequesterDir = path.dirname(customRequesterFullPath);
-
-      // This logic would ideally be tied to a new config option like `scaffoldCustomRequester: boolean`
-      // For now, let's assume true if the filePath is provided (implicit from customRequesterConfig existence)
-      // A more explicit config `scaffoldCustomRequester` from ResolvedPackageConfig should be used.
-      // Let's assume `scaffoldRequesterAdapter` is the property on ResolvedPackageConfig
-      const scaffoldEnabled = packageConfig.scaffoldRequesterAdapter; // Use the resolved boolean value directly
-
-      if (scaffoldEnabled && !fsSync.existsSync(customRequesterFullPath)) {
+      if (scaffoldEnabled && !fsSync.existsSync(actualAbsoluteCustomRequesterPath)) {
         try {
           await fs.mkdir(customRequesterDir, { recursive: true });
           const scaffoldContent = generateCustomRequesterScaffold(
-            packageConfig.customRequesterConfig.exportName,
+            packageConfig.customRequesterConfig.exportName, // exportName is guaranteed
             packageConfig
           );
-          await fs.writeFile(customRequesterFullPath, scaffoldContent, "utf-8");
-          console.log(`\n✅ Scaffold for custom requester created at: ${customRequesterFullPath}`);
+          await fs.writeFile(actualAbsoluteCustomRequesterPath, scaffoldContent, "utf-8");
+          console.log(`\n✅ Scaffold for custom requester created at: ${actualAbsoluteCustomRequesterPath}`);
           console.log(`   Please complete the implementation in this file.`);
         } catch (scaffoldError: any) {
           console.warn(
-            `\n⚠️ WARNING: Failed to create scaffold for custom requester at ${customRequesterFullPath}: ${scaffoldError.message}`
+            `\n⚠️ WARNING: Failed to create scaffold for custom requester at ${actualAbsoluteCustomRequesterPath}: ${scaffoldError.message}`
           );
         }
-      } else if (fsSync.existsSync(customRequesterFullPath)) {
-        console.log(`\nℹ️ Custom requester file already exists at ${customRequesterFullPath}. No scaffold generated.`);
+      } else if (fsSync.existsSync(actualAbsoluteCustomRequesterPath)) {
+        console.log(
+          `\nℹ️ Custom requester file already exists at ${actualAbsoluteCustomRequesterPath}. No scaffold generated.`
+        );
       }
     }
 
