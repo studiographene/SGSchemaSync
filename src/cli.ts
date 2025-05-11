@@ -19,6 +19,7 @@ interface CliGeneratorOptions extends CoreGeneratorOptions {
   prettierConfigPath?: string; // Added for CLI Prettier config path
   adapterPath?: string; // For customRequesterAdapterPath
   scaffoldAdapter?: boolean; // For scaffoldRequesterAdapter
+  stripPathPrefix?: string; // New CLI option
 }
 
 const program = new Command();
@@ -50,6 +51,10 @@ program
   .option(
     "--scaffold-adapter / --no-scaffold-adapter",
     "Enable or disable scaffolding of the custom requester adapter file if it doesn\'t exist. Used if useDefaultRequester is false."
+  )
+  .option(
+    "--strip-path-prefix <prefix>",
+    "A string prefix to strip from the beginning of all paths from the OpenAPI spec (e.g., /api)"
   );
 
 program.parse(process.argv);
@@ -125,6 +130,18 @@ if (options.adapterPath !== undefined) {
 if (options.scaffoldAdapter !== undefined) {
   finalPackageConfig.scaffoldRequesterAdapter = options.scaffoldAdapter;
   console.log(`Scaffolding for custom requester adapter ${options.scaffoldAdapter ? "enabled" : "disabled"} via CLI.`);
+}
+
+// Override stripPathPrefix from CLI if provided
+if (options.stripPathPrefix !== undefined) {
+  finalPackageConfig.stripPathPrefix = options.stripPathPrefix;
+  if (options.stripPathPrefix === "") {
+    // Handle case where user provides an empty string to effectively unset it
+    finalPackageConfig.stripPathPrefix = undefined;
+    console.log(`Path prefix stripping disabled via CLI (empty prefix).`);
+  } else {
+    console.log(`Path prefix to strip set via CLI: "${options.stripPathPrefix}"`);
+  }
 }
 
 // Validate that either input URL/path or a baseURL from config is provided

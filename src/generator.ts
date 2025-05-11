@@ -61,11 +61,23 @@ export async function generateFilesForTag(
     const { operation, path, method } = opInfo;
     const operationId = operation.operationId;
 
+    // Apply stripPathPrefix if configured
+    let processedPath = path;
+    if (packageConfig.stripPathPrefix && processedPath.startsWith(packageConfig.stripPathPrefix)) {
+      processedPath = processedPath.substring(packageConfig.stripPathPrefix.length);
+      // Ensure the path still starts with a / if it's not empty after stripping
+      if (processedPath && !processedPath.startsWith("/")) {
+        processedPath = "/" + processedPath;
+      }
+    }
+
     // BaseName for types (uses operationId or path)
+    // For types, we still use the original path for getPathBasedBaseName to maintain original naming if stripPathPrefix is only for URL construction
     const baseNameForTypes = operationId ? toPascalCase(operationId) : getPathBasedBaseName(path);
 
     // --- Generate function name using new convention ---
-    const endpointBaseName = getPathBasedBaseName(path);
+    // Use processedPath for endpointBaseName if it affects naming conventions for functions/hooks
+    const endpointBaseName = getPathBasedBaseName(processedPath);
     const methodUpper = method.toUpperCase();
     const methodPascal = toPascalCase(method);
 
@@ -85,8 +97,8 @@ export async function generateFilesForTag(
     // Add Operation Banners to Types File (using operation summary)
     const summary = operation.summary || "No Description Provided";
 
-    // Create banner for the operation group
-    const operationGroupBanner = createOperationGroupBanner(operation.summary, method, path);
+    // Create banner for the operation group, use processedPath for display
+    const operationGroupBanner = createOperationGroupBanner(operation.summary, method, processedPath);
 
     typesContent += `\n\n${operationGroupBanner}\n`;
 
@@ -230,7 +242,8 @@ export async function generateFilesForTag(
     factoryInnerFuncParamsList.push(`callSpecificOptions?: ${callSpecificOptionsType}`);
 
     const factoryInnerFuncParamsString = factoryInnerFuncParamsList.join(",\n    ");
-    const urlPath = path.replace(/{([^}]+)}/g, (match, paramNameInPath) => {
+    // Use processedPath for generating the runtime urlPath
+    const urlPath = processedPath.replace(/{([^}]+)}/g, (match, paramNameInPath) => {
       const sanitizedParamName = toTsIdentifier(paramNameInPath);
       return `\${${sanitizedParamName}}`; // Ensure this correctly interpolates the variable
     });
@@ -310,8 +323,8 @@ export async function generateFilesForTag(
       const hookFactoryName = `create${hookBaseName}Hook`;
       hookFactoryNames.push(hookFactoryName);
 
-      // Determine queryKey structure
-      let queryKeyParts = [`"${sanitizedTagName}"`, `"${endpointBaseName}"`];
+      // Determine queryKey structure - use processedPath for endpointBaseName which is used in queryKeyParts
+      let queryKeyParts = [`"${sanitizedTagName}"`, `"${endpointBaseName}"`]; // endpointBaseName is now from processedPath
       pathParams.forEach((p) => queryKeyParts.push(toTsIdentifier(p.name)));
 
       // Arguments for the function created by the function factory (these are the actual values passed, not type defs)
@@ -321,7 +334,7 @@ export async function generateFilesForTag(
 
       let hookComment = `/**\n`;
       hookComment += ` * Factory for creating a TanStack Query hook for: ${summary}\n`;
-      hookComment += ` * Method: ${method.toUpperCase()}, Path: ${path}\n`;
+      hookComment += ` * Method: ${method.toUpperCase()}, Path: ${processedPath}\n`; // Use processedPath in comments
       if (operation.description) {
         hookComment += ` * Description: ${operation.description.replace(/\n/g, "\n *   ")}\n`;
       }

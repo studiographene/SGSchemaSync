@@ -13,6 +13,7 @@ export interface PackageConfig {
   prettierConfigPath?: string;
   customRequesterAdapterPath?: string;
   scaffoldRequesterAdapter?: boolean;
+  stripPathPrefix?: string;
 }
 
 // Default package configuration
@@ -31,6 +32,7 @@ export const defaultPackageConfig: PackageConfig = {
   prettierConfigPath: undefined,
   customRequesterAdapterPath: "sgClientSetup.ts",
   scaffoldRequesterAdapter: true,
+  stripPathPrefix: undefined,
 };
 
 // Example of how to use this in a client project:

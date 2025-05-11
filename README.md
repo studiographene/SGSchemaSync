@@ -87,6 +87,7 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi.json> -o ./src/api/generated
 *   `--prettier-config-path <path>`: (Optional) Path to a custom Prettier configuration file (e.g., `.prettierrc.json`, `prettier.config.js`). If provided, this overrides the `prettierConfigPath` setting in the config file and Prettier's default config discovery.
 *   `--adapter-path <path>`: (Optional) Specifies the path for the custom requester adapter file (e.g., `sgClientSetup.ts`). This is used when `useDefaultRequester` is `false`. If a relative path is given, it's resolved from the main output directory (specified by `-o`). Absolute paths are used as-is. Overrides `customRequesterAdapterPath` in the config file.
 *   `--scaffold-adapter / --no-scaffold-adapter`: (Optional) When `useDefaultRequester` is `false`, this flag controls whether a scaffold for the custom requester adapter file is generated if it doesn't already exist. Defaults to enabled. Overrides `scaffoldRequesterAdapter` in the config file.
+*   `--strip-path-prefix <prefix>`: (Optional) A string prefix to strip from the beginning of all paths obtained from the OpenAPI specification before they are used for generating runtime request paths and influencing generated names (like hook names or query keys if they are path-based). For example, if your OpenAPI paths are `/api/users` and you provide `--strip-path-prefix /api`, the generated path constants will be `/users`. Type names (e.g., `_Request`, `_Response` types) will still be based on the original, unstripped path to maintain naming consistency. Defaults to no prefix stripping. Overrides `stripPathPrefix` in the config file.
 
 ## Configuration File (`sg-schema-sync.config.js`)
 
@@ -109,6 +110,7 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
 *   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file. If not set, Prettier will attempt to find a configuration file as per its standard discovery mechanism (e.g., `.prettierrc` in the project). Can be overridden by the `--prettier-config-path` CLI flag.
 *   `customRequesterAdapterPath: string`: (Default: `'sgClientSetup.ts'`) When `useDefaultRequester` is `false`, this is the path for the custom requester adapter file. If a relative path is provided (e.g., `myClientAdapter.ts` or `adapters/customAdapter.ts`), it will be created/looked for inside the main output directory (specified by `output` in config or `-o` in CLI). Absolute paths are used as-is.
 *   `scaffoldRequesterAdapter: boolean`: (Default: `true`) When `useDefaultRequester` is `false`, if this is `true` and the file at `customRequesterAdapterPath` does not exist, the tool will generate a basic scaffold for it, including commented-out imports and instantiations for all generated API tags. This file will not be overwritten if it already exists.
+*   `stripPathPrefix: string | undefined`: (Default: `undefined`) Optional string prefix to strip from the beginning of all paths obtained from the OpenAPI specification. For example, if your OpenAPI paths are `/api/users` and you set this to `/api`, the generated path constants used for runtime requests will be `/users`. This also influences `endpointBaseName` which can affect generated function/hook names and query keys. Type names (e.g., derived from `baseNameForTypes`) will still use the original, unstripped path. If `undefined` or an empty string, no prefix stripping occurs. Can be overridden by the `--strip-path-prefix` CLI flag.
 *   *(Other fields like `baseDir` also exist).*
 
 **Example `sg-schema-sync.config.js`:**
@@ -129,6 +131,7 @@ module.exports = {
       defaultClientFileSuffix: 'Client.ts', // Only relevant if useDefaultRequester is true
       formatWithPrettier: true, // Explicitly set, though true is the default
       // prettierConfigPath: '.prettierrc.custom.json', // Optional: specify custom prettier config
+      // stripPathPrefix: "/api", // Example: Strip /api from all paths for runtime
 
       // Optional: Override default naming conventions
       // generateFunctionNames: "call{Endpoint}{method}",
@@ -144,7 +147,7 @@ module.exports = {
 ```
 
 **Configuration Precedence:** (Simplified)
-1.  CLI arguments (e.g., `-o`, `--config`, `--prettier`, `--prettier-config-path`, `--adapter-path`, `--scaffold-adapter`).
+1.  CLI arguments (e.g., `-o`, `--config`, `--prettier`, `--prettier-config-path`, `--adapter-path`, `--scaffold-adapter`, `--strip-path-prefix`).
 2.  `sg-schema-sync.config.js` values.
 3.  `--input` (as fallback for `baseURL`).
 4.  Internal defaults.
