@@ -17,7 +17,7 @@ const DEFAULT_CONFIG_FILENAME = "sg-schema-sync.config.js";
 
 // Define hardcoded defaults for specific nested properties formerly in defaultConfig
 const DEFAULT_GET_TOKEN_EXPORT_NAME = "getToken";
-const DEFAULT_CUSTOM_REQUESTER_FILE_PATH = "./sg-requester.ts";
+const DEFAULT_CUSTOM_REQUESTER_FILE_PATH = "schema-sync-requester.ts";
 const DEFAULT_CUSTOM_REQUESTER_EXPORT_NAME = "SchemaSyncRequester";
 
 interface CliOptions extends Partial<Omit<PackageConfig, "defaultRequesterConfig" | "customRequesterConfig">> {
@@ -29,6 +29,7 @@ interface CliOptions extends Partial<Omit<PackageConfig, "defaultRequesterConfig
   getTokenExportName?: string;
   customRequesterPath?: string;
   customRequesterExportName?: string;
+  scaffoldRequester?: boolean;
 }
 
 program
@@ -90,6 +91,11 @@ program
   .option(
     "--generate-functions [boolean]",
     "Generate API client functions. Overrides 'generateFunctions' in config file.",
+    (val) => val !== "false"
+  )
+  .option(
+    "--scaffold-requester [boolean]",
+    "Scaffold a requester adapter. Overrides 'scaffoldRequesterAdapter' in config file.",
     (val) => val !== "false"
   );
 
@@ -160,6 +166,7 @@ async function main() {
   if (cliArgs.prettierConfigPath !== undefined) mergedConfig.prettierConfigPath = cliArgs.prettierConfigPath;
   if (cliArgs.generateHooks !== undefined) mergedConfig.generateHooks = cliArgs.generateHooks;
   if (cliArgs.generateFunctions !== undefined) mergedConfig.generateFunctions = cliArgs.generateFunctions;
+  if (cliArgs.scaffoldRequester !== undefined) mergedConfig.scaffoldRequesterAdapter = cliArgs.scaffoldRequester;
 
   // Handle nested defaultRequesterConfig
   const getTokenModulePathFromFile = userConfigFromFile.defaultRequesterConfig?.getTokenModulePath;
@@ -214,6 +221,7 @@ async function main() {
     timeout: mergedConfig.timeout ?? baseDefaultConfig.timeout!,
     generateHooks: mergedConfig.generateHooks ?? baseDefaultConfig.generateHooks!,
     generateFunctions: mergedConfig.generateFunctions ?? baseDefaultConfig.generateFunctions!,
+    scaffoldRequesterAdapter: mergedConfig.scaffoldRequesterAdapter ?? baseDefaultConfig.scaffoldRequesterAdapter!,
     defaultRequesterConfig: undefined, // Initialize, will be set if useDefaultRequester is true
   };
 

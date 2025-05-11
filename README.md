@@ -6,10 +6,10 @@ This tool parses an OpenAPI JSON or YAML file (local or remote) and generates:
 *   TypeScript interfaces for request bodies, parameters, and responses.
 *   **Factory functions** for creating API call functions.
 *   Optionally, **factory functions** for TanStack Query (v4/v5) hooks.
-*   An **auto-generated client module** per API tag that orchestrates these factories with a configured requester.
-*   An optional, **scaffolded custom requester file** if you opt out of the default requester.
+*   An **auto-generated and always overwritten client module per API tag** (e.g., `user/client.ts`) that orchestrates these factories with a configured requester (either a default one or your custom implementation).
+*   An optional, **scaffolded custom requester file** (e.g., `schema-sync-requester.ts` in your main output directory) if you opt out of the default requester and the file doesn't already exist. This scaffold provides a lean starting point for your custom HTTP logic.
 
-Files are organized into **tag-based directories**, where the tag is determined by the first `tag` associated with each endpoint in the OpenAPI specification.
+Files are organized into **tag-based directories**, where the tag is determined by the first `tag` associated with each endpoint in the OpenAPI specification. Each tag directory also includes a main `index.ts` barrel file re-exporting types and the instantiated client functions/hooks.
 
 ## Key Features & Approach
 
@@ -22,16 +22,28 @@ SGSchema-Sync now employs a **factory-based approach** for generating API functi
 
 2.  **Requester Abstraction (`SGSyncRequester`):**
     *   The generated factories depend on an `SGSyncRequester` function type (defined in `sg-schema-sync/requester-types`). This function is responsible for making the actual HTTP request.
-    *   You can choose to use a **default requester** (axios/fetch-based) provided by `sg-schema-sync` or provide your **own custom implementation**, adapting to your existing API service layer or preferred HTTP client.
+    *   You have two main options for providing this requester:
+        *   **Default Requester (`useDefaultRequester: true`):**
+            *   The tool provides a default requester (`createDefaultSGSyncRequester`) based on Axios/Fetch.
+            *   You must configure `defaultRequesterConfig.getTokenModulePath` (and optionally `defaultRequesterConfig.getTokenExportName`) in your `sg-schema-sync.config.js` to point to your module that exports a `getToken(): Promise<string | null>` function for handling authentication. The `baseURL` from your config is also used.
+        *   **Custom Requester (`useDefaultRequester: false`):**
+            *   You provide your own `SGSyncRequester` implementation.
+            *   This is configured via `customRequesterConfig.filePath` (e.g., `src/api/schema-sync-requester.ts`) and `customRequesterConfig.exportName` (e.g., `myCustomSGSyncRequester`) in your `sg-schema-sync.config.js`.
 
-3.  **Orchestration Client Module:**
-    *   For each API tag, a central client module (e.g., `user/client.ts`) is automatically generated and **overwritten on each run**.
-    *   This module imports the necessary function/hook factories for the tag.
-    *   It then imports and configures the chosen requester (default or custom).
-    *   Finally, it instantiates all factories with this requester and exports the ready-to-use API functions and hooks.
+3.  **Per-Tag Orchestration Client Module (e.g., `user/client.ts`):**
+    *   For each API tag, a central client module (e.g., `user/client.ts`, filename configurable via `generatedClientModuleBasename`) is automatically generated and **overwritten on each run**.
+    *   This module imports the necessary function/hook factories for the tag (from `./functions.ts` and `./hooks.ts`).
+    *   It then imports and configures the chosen requester:
+        *   If using the **default requester**, it imports `createDefaultSGSyncRequester` and your `getToken` function (from the configured path), instantiates the default requester with `baseURL` and `getToken`.
+        *   If using a **custom requester**, it imports your custom requester function from the configured path and export name.
+    *   Finally, it instantiates all factories with this chosen requester and exports the ready-to-use API functions and hooks for that tag.
 
-4.  **Scaffolding for Custom Requesters:**
-    *   If you opt for a custom requester, the tool can generate a scaffold file (e.g., `sg-requester.ts`) with a placeholder implementation and instructions, making setup easier.
+4.  **Scaffolding for Custom Requesters (`schema-sync-requester.ts`):**
+    *   If you set `useDefaultRequester: false` and `scaffoldRequesterAdapter: true` (default), and the file specified in `customRequesterConfig.filePath` does not exist, the tool will generate a **lean scaffold file** (default name: `schema-sync-requester.ts`, placed in your main output directory).
+    *   This scaffold provides a basic `SGSyncRequester` function boilerplate. It is **your responsibility** to fill in the actual HTTP request logic. This file is user-owned and will not be overwritten once created.
+
+5.  **Barrel Exports (`index.ts` per tag):**
+    *   Each tag directory (e.g., `users/`) gets an `index.ts` that re-exports all types from `types.ts` and all instantiated functions/hooks from the `client.ts` module for easy importing.
 
 ## Installation
 
@@ -88,188 +100,356 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi_spec> -o ./src/api/generated
 *   `--config <path>`: (Optional) Path to a JavaScript configuration file (e.g., `sg-schema-sync.config.js`). If not provided, the tool will automatically look for `sg-schema-sync.config.js` in the current working directory. This file can export configuration options to customize fetching the OpenAPI spec and other aspects of generation.
 *   `--prettier / --no-prettier`: (Optional) Enable or disable Prettier formatting for the generated files. Defaults to enabled. This overrides the `formatWithPrettier` setting in the config file.
 *   `--prettier-config-path <path>`: (Optional) Path to a custom Prettier configuration file (e.g., `.prettierrc.json`, `prettier.config.js`). If provided, this overrides the `prettierConfigPath` setting in the config file and Prettier's default config discovery.
-*   `--adapter-path <path>`: (Optional) Specifies the path for the custom requester adapter file (e.g., `sgClientSetup.ts`). This is used when `useDefaultRequester` is `false`. If a relative path is given, it's resolved from the main output directory (specified by `-o`). Absolute paths are used as-is. Overrides `customRequesterAdapterPath` in the config file.
-*   `--scaffold-adapter / --no-scaffold-adapter`: (Optional) When `useDefaultRequester` is `false`, this flag controls whether a scaffold for the custom requester adapter file is generated if it doesn't already exist. Defaults to enabled. Overrides `scaffoldRequesterAdapter` in the config file.
+*   `--custom-requester-file-path <path>`: (Optional) Specifies the path for the custom requester file (e.g., `src/api/my-requester.ts`). Used when `useDefaultRequester` is `false`. If a relative path is given, it's resolved from the main output directory (specified by `-o`). Absolute paths are used as-is. Overrides `customRequesterConfig.filePath` in the config file.
+*   `--custom-requester-export-name <name>`: (Optional) Specifies the export name of your custom requester function within the file specified by `--custom-requester-file-path`. Defaults to `customSGSyncRequester`. Overrides `customRequesterConfig.exportName` in the config file.
+*   `--scaffold-requester / --no-scaffold-requester`: (Optional) When `useDefaultRequester` is `false`, this flag controls whether a scaffold for the custom requester file is generated if it doesn't already exist. Defaults to enabled. Overrides `scaffoldRequesterAdapter` in the config file.
+*   `--default-requester-token-module-path <path>`: (Optional) Specifies the module path to your `getToken` function, used when `useDefaultRequester` is `true`. (e.g., `src/auth/tokenStore`). Overrides `defaultRequesterConfig.getTokenModulePath` in the config file.
+*   `--default-requester-token-export-name <name>`: (Optional) Specifies the export name of your `getToken` function. Defaults to `getToken`. Overrides `defaultRequesterConfig.getTokenExportName` in the config file.
+*   `--generated-client-module-basename <name>`: (Optional) Basename for the auto-generated per-tag client orchestrator module (e.g., `client` would result in `users/client.ts`). Defaults to `client`. Overrides `generatedClientModuleBasename` in the config file.
 *   `--strip-path-prefix <prefix>`: (Optional) A string prefix to strip from the beginning of all paths obtained from the OpenAPI specification before they are used for generating runtime request paths and influencing generated names (like hook names or query keys if they are path-based). For example, if your OpenAPI paths are `/api/users` and you provide `--strip-path-prefix /api`, the generated path constants will be `/users`. Type names (e.g., `_Request`, `_Response` types) will still be based on the original, unstripped path to maintain naming consistency. Defaults to no prefix stripping. Overrides `stripPathPrefix` in the config file.
 
 ## Configuration File (`sg-schema-sync.config.js`)
 
 Provide advanced options via a JavaScript file (default: `sg-schema-sync.config.js` in your project root, or specify with `--config`).
-It should export a `config` object: `module.exports = { config: { /* ... */ } };`
+It should export a `config` object: `module.exports = { config: { /* ... */ } };` or just the package config directly: `module.exports = { packageConfig: { /* ... */ } };` or `module.exports = { /* ... */ };` (if it's the `PackageConfig` structure).
 
-**`config.packageConfig` options:**
+**`PackageConfig` options (can be nested under `config.packageConfig` or be the top-level export):**
 
-*   `baseURL: string`: Base URL for the API (used by the default requester or if `--input` is not a full URL).
-*   `generateFunctions: boolean`: (Default: `true`) Controls whether API client function factory functions are generated in `functions.ts` files. If set to `false`, function factories (and subsequently hook factories, if enabled) will not be generated for API operations.
-*   `generateFunctionNames: string`: Template for generated function names (e.g., `{method}{Endpoint}`). Default: `{method}{Endpoint}`.
+*   `input: string`: (Required) Path to a local OpenAPI JSON/YAML file or a URL.
+*   `outputDir: string`: (Required) The base output directory.
+*   `baseURL: string`: Base URL for the API (used by the default requester).
+*   `generateFunctions: boolean`: (Default: `true`) Controls whether API client function factory functions are generated in `functions.ts` files.
+*   `generateFunctionNames: string`: Template for generated function factory names (e.g., `create{Method}{Endpoint}Function`). Default: `create{Method}{Endpoint}Function`.
 *   `generateTypesNames: string`: Template for generated type names. Default: `{Method}{Endpoint}Types`.
-*   `generateHooksNames: string`: Template for generated hook names. Default: `use{Method}{Endpoint}`.
+*   `generateHooksNames: string`: Template for generated hook factory names. Default: `createUse{Method}{Endpoint}Hook`.
 *   `generateHooks: boolean`: (Default: `true`) Controls whether TanStack Query (v4/v5) hook factory functions are generated in `hooks.ts` files.
-*   `useDefaultRequester: boolean`: (Default: `false`)
-    *   If `true`, a client file (e.g., `[tagName].sgClient.ts`) is generated for each tag, using a built-in default requester. This provides ready-to-use functions and hooks.
-    *   If `false`, only factory functions are generated, and you provide your own requester implementation.
-*   `defaultClientFileSuffix: string`: (Default: `'sgClient.ts'`) Suffix for the auto-generated client file when `useDefaultRequester` is true. Example: `products.sgClient.ts`.
-*   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier. Can be overridden by the `--prettier` / `--no-prettier` CLI flags.
-*   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file. If not set, Prettier will attempt to find a configuration file as per its standard discovery mechanism (e.g., `.prettierrc` in the project). Can be overridden by the `--prettier-config-path` CLI flag.
-*   `customRequesterAdapterPath: string`: (Default: `'sgClientSetup.ts'`) When `useDefaultRequester` is `false`, this is the path for the custom requester adapter file. If a relative path is provided (e.g., `myClientAdapter.ts` or `adapters/customAdapter.ts`), it will be created/looked for inside the main output directory (specified by `output` in config or `-o` in CLI). Absolute paths are used as-is.
-*   `scaffoldRequesterAdapter: boolean`: (Default: `true`) When `useDefaultRequester` is `false`, if this is `true` and the file at `customRequesterAdapterPath` does not exist, the tool will generate a basic scaffold for it, including commented-out imports and instantiations for all generated API tags. This file will not be overwritten if it already exists.
-*   `stripPathPrefix: string | undefined`: (Default: `undefined`) Optional string prefix to strip from the beginning of all paths obtained from the OpenAPI specification. For example, if your OpenAPI paths are `/api/users` and you set this to `/api`, the generated path constants used for runtime requests will be `/users`. This also influences `endpointBaseName` which can affect generated function/hook names and query keys. Type names (e.g., derived from `baseNameForTypes`) will still use the original, unstripped path. If `undefined` or an empty string, no prefix stripping occurs. Can be overridden by the `--strip-path-prefix` CLI flag.
-*   *(Other fields like `baseDir` also exist).*
+*   `useDefaultRequester: boolean`: (Default: `true`)
+    *   If `true`, the auto-generated per-tag client module (e.g., `users/client.ts`) will use a built-in default requester. You **must** provide `defaultRequesterConfig`.
+    *   If `false`, the client module will use your custom requester. You **must** provide `customRequesterConfig`.
+*   `defaultRequesterConfig: { getTokenModulePath: string; getTokenExportName?: string; }`: (Required if `useDefaultRequester: true`)
+    *   `getTokenModulePath: string`: Path to the module exporting your `getToken` function (e.g., `src/utils/auth` or `@/utils/auth`). This module should export a function that returns `Promise<string | null>`.
+    *   `getTokenExportName?: string`: (Default: `getToken`) The named export of your token function from `getTokenModulePath`.
+*   `customRequesterConfig: { filePath: string; exportName: string; }`: (Required if `useDefaultRequester: false`)
+    *   `filePath: string`: Path to your custom requester file (e.g., `src/api/schema-sync-requester.ts`). If relative, it's resolved from the `outputDir`.
+    *   `exportName: string`: The named export of your custom `SGSyncRequester` function from `filePath`.
+*   `scaffoldRequesterAdapter: boolean`: (Default: `true`) When `useDefaultRequester` is `false`, if this is `true` and the file at `customRequesterConfig.filePath` does not exist, the tool will generate a lean scaffold for it. This file will not be overwritten if it already exists.
+*   `generatedClientModuleBasename: string`: (Default: `client`) Basename for the auto-generated, per-tag client orchestrator module (e.g., `client` results in `users/client.ts`).
+*   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier.
+*   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file.
+*   `stripPathPrefix: string | undefined`: (Default: `undefined`) Optional string prefix to strip from paths.
+*   *(Other fields like `defaultConfig` from the CLI are also part of `PackageConfig` but usually set via CLI or have sensible defaults).*
 
 **Example `sg-schema-sync.config.js`:**
 ```javascript
 // sg-schema-sync.config.js
 module.exports = {
-  config: {
-    packageConfig: {
-      baseURL: 'https://api.example.com/v1',
-      generateFunctions: true, // Generate API function factories (default is true)
-      generateHooks: true, // Generate TanStack Query hooks
-      useDefaultRequester: false, // Set to false to use a custom requester
-      // Settings for custom requester adapter (if useDefaultRequester is false):
-      // customRequesterAdapterPath: 'myClientAdapter.ts', // Example: place adapter in output root
-      // customRequesterAdapterPath: 'adapters/myClientAdapter.ts', // Example: place in a subdir of output
-      scaffoldRequesterAdapter: true, // Auto-generate scaffold if adapter file doesn't exist (uses default path if not set above)
+  // config can be at top level if it's the PackageConfig structure
+  // or nested under packageConfig for clarity / other top-level config sections in future
+  // packageConfig: { 
+  input: 'https://petstore3.swagger.io/api/v3/openapi.json',
+  outputDir: './src/api/schema-sync', // Main output directory
+  baseURL: 'https://petstore3.swagger.io/api/v3', // For default requester
 
-      defaultClientFileSuffix: 'Client.ts', // Only relevant if useDefaultRequester is true
-      formatWithPrettier: true, // Explicitly set, though true is the default
-      // prettierConfigPath: '.prettierrc.custom.json', // Optional: specify custom prettier config
-      // stripPathPrefix: "/api", // Example: Strip /api from all paths for runtime
+  generateHooks: true,
+  useDefaultRequester: true, // Set to true to use default requester
 
-      // Optional: Override default naming conventions
-      // generateFunctionNames: "call{Endpoint}{method}",
-      // generateTypesNames: "{Method}{Endpoint}Schema",
-      // generateHooksNames: "fetch{Endpoint}{Method}Hook",
-    },
-    requestConfig: { // Passed to the spec fetching request, not the generated client by default
-      timeout: 10000,
-      headers: { 'X-API-KEY': 'your-key-for-spec-fetching' },
-    },
-  }
+  // Required if useDefaultRequester is true:
+  defaultRequesterConfig: {
+    getTokenModulePath: '@/lib/auth', // Path to your module with getToken
+    // getTokenExportName: 'getMyAuthToken', // Optional: if your function isn't named 'getToken'
+  },
+
+  // Required if useDefaultRequester is false:
+  // customRequesterConfig: {
+  //   filePath: 'src/api/my-custom-requester.ts', // Path to your custom requester, relative to outputDir if not absolute
+  //   exportName: 'myCustomSGSyncRequester',     // Export name of your requester function
+  // },
+  // scaffoldRequesterAdapter: true, // Default is true, scaffolds customRequesterConfig.filePath if it doesn't exist
+
+  generatedClientModuleBasename: 'client', // Results in e.g. user/client.ts
+  // formatWithPrettier: true, // Default is true
+  // prettierConfigPath: '.prettierrc.custom.json',
+  // stripPathPrefix: "/api/v3",
+  // } // end of packageConfig if you used that nesting
 };
 ```
 
-**Configuration Precedence:** (Simplified)
-1.  CLI arguments (e.g., `-o`, `--config`, `--prettier`, `--prettier-config-path`, `--adapter-path`, `--scaffold-adapter`, `--strip-path-prefix`).
-2.  `sg-schema-sync.config.js` values.
-3.  `--input` (as fallback for `baseURL`).
-4.  Internal defaults.
+**Configuration Precedence:**
+1.  CLI arguments.
+2.  Values from `sg-schema-sync.config.js`.
+3.  Internal defaults.
 
 ## Generated File Structure
 
-By default, after generation, all `.ts` and `.js` files in the output directory will be formatted using Prettier. This behavior can be controlled via configuration (see above).
+After generation, all `.ts` files in the output directory will be formatted using Prettier (if enabled).
 
-For a tag named `Users` and assuming `customRequesterAdapterPath` is `sgClientSetup.ts` (and `useDefaultRequester: false`):
+For an API with tags `Users` and `Products`, and `outputDir` set to `src/api/schema-sync`:
+
 ```
-<output_directory>/
+src/api/schema-sync/
 ├── users/
-│   ├── index.ts        # Main barrel export for the tag
-│   ├── types.ts        # TypeScript interfaces
-│   ├── functions.ts    # Exports *factory functions* for API calls
-│   ├── hooks.ts        # Optional: Exports *factory functions* for TanStack Query hooks
-│   └── users.sgClient.ts # Optional: Generated if useDefaultRequester=true
-├── sgClientSetup.ts    # Custom adapter scaffold/file (if useDefaultRequester=false)
+│   ├── index.ts        # Exports * from './types' and * from './client'
+│   ├── types.ts        # TypeScript interfaces for Users API
+│   ├── functions.ts    # Exports *factory functions* for Users API calls
+│   ├── hooks.ts        # Optional: Exports *factory functions* for Users TanStack Query hooks
+│   └── client.ts       # Auto-generated: Imports factories & chosen requester, exports instantiated functions/hooks
+├── products/
+│   ├── index.ts
+│   ├── types.ts
+│   ├── functions.ts
+│   ├── hooks.ts        # Optional
+│   └── client.ts
+├── schema-sync-requester.ts # Optional: Scaffold for custom requester if useDefaultRequester=false,
+│                            # scaffoldRequesterAdapter=true, and file doesn't exist.
+│                            # (Filename and path from customRequesterConfig.filePath)
 └── # ... other tags
 ```
 
 ## Generated Code Deep Dive
 
-### 1. `types.ts`
-Contains TypeScript interfaces for request bodies, parameters, and responses. (Naming: `{Method}{Endpoint}Types_Request`, `{Method}{Endpoint}Types_Response`, etc.)
+### 1. `types.ts` (per tag)
+Contains TypeScript interfaces for request bodies, path/query parameters, and responses. (Naming often based on `generateTypesNames` template, e.g., `GetUserByIdTypes_Response`).
 
-### 2. `functions.ts` (Core Factories)
+### 2. `functions.ts` (per tag - Core Factories)
 *   Exports **factory functions** for each API operation, e.g., `export const createGetUserByIdFunction = (requester: SGSyncRequester) => { /* returns async func */ };`
 *   Each factory takes an `SGSyncRequester` argument.
-*   The returned async function (e.g., `getUserById`) takes path parameters, data, params, and `callSpecificOptions`. It constructs `SGSyncRequesterOptions` (including `authRequire: boolean` derived from your OpenAPI spec's `security` definitions) and calls the provided `requester`.
+*   The returned async function (e.g., `getUserById`) takes path parameters, data, query params, and `callSpecificOptions`. It constructs `SGSyncRequesterOptions` (including `authRequired: boolean` derived from your OpenAPI spec's `security` definitions) and calls the provided `requester`.
 *   The returned function's promise resolves with an `SGSyncResponse<ResponseType>`.
-*   **`SGSyncRequester`, `SGSyncRequesterOptions`, `SGSyncResponse`**: These crucial types define the contract for the requester mechanism. They are exported by the `sg-schema-sync` package (or available locally) for you to implement a custom requester.
+*   **`SGSyncRequester`, `SGSyncRequesterOptions`, `SGSyncResponse`**: These crucial types define the contract for the requester mechanism. They are exported by the `sg-schema-sync` package (or available locally if you copy them) for you to implement a custom requester or understand the default one.
 
-### 3. `hooks.ts` (React Query Factories)
-*(Generated only if `generateHooks: true` in config)*
+### 3. `hooks.ts` (per tag - React Query Factories)
+*(Generated only if `generateHooks: true`)*
 *   Exports **factory functions** for TanStack Query hooks, e.g., `export const createUseGetUserByIdHook = (requester: SGSyncRequester) => { /* returns hook */ };`
 *   Each factory takes an `SGSyncRequester`.
 *   The returned hook internally uses the corresponding function factory (e.g., `createGetUserByIdFunction`) to get an API call function, then uses it in `queryFn` or `mutationFn`.
-*   The hook extracts the `.data` property from the `SGSyncResponse`.
+*   The hook typically extracts the `.data` property from the `SGSyncResponse` for convenience in `useQuery` or provides the full `SGSyncResponse` for mutations.
 
-### 4. `[tagName][defaultClientFileSuffix].ts` (e.g., `users.sgClient.ts`)
-*(Generated only if `useDefaultRequester: true` in config)*
-*   This file provides a **ready-to-use client**.
-*   It imports `createDefaultSGSyncRequester` from `sg-schema-sync` (this is a basic Axios/Fetch-based requester).
-*   It imports all factory functions from `./functions.ts` and (if applicable) `./hooks.ts`.
-*   It instantiates the default requester, configured with `baseURL` from your `packageConfig`.
-*   **Crucially, it includes a placeholder `getToken()` function.** You **must** edit this function in the generated file to provide your application's actual authentication token if your APIs require auth.
+### 4. `<tag>/client.ts` (Per-Tag Orchestrator Module)
+*   This file is **auto-generated and always overwritten on each run**. Do not edit it directly. Its basename is configurable via `generatedClientModuleBasename` (default: `client`).
+*   **Purpose:** To provide ready-to-use API functions and hooks, instantiated with the chosen requester.
+*   **Imports:**
+    *   All factory functions from `./functions.ts`.
+    *   All factory hooks (if generated) from `./hooks.ts`.
+    *   The chosen requester:
+        *   **If `useDefaultRequester: true`:**
+            *   Imports `createDefaultSGSyncRequester` from `sg-schema-sync/default-requester`.
+            *   Imports your `getToken` function from the module specified in `defaultRequesterConfig.getTokenModulePath` (using `defaultRequesterConfig.getTokenExportName`).
+            *   Instantiates the default requester: `const requester = createDefaultSGSyncRequester({ baseURL, getToken });`
+        *   **If `useDefaultRequester: false`:**
+            *   Imports your custom requester function from the module specified in `customRequesterConfig.filePath` (using `customRequesterConfig.exportName`).
+            *   `const requester = yourImportedCustomRequester;`
+*   **Instantiates Factories:** It calls all imported factory functions/hooks with the `requester` instance.
+*   **Exports:** Exports the concrete, ready-to-use API functions (e.g., `export const GetUserById = createGetUserByIdFunction(requester);`) and hooks (e.g., `export const useGetUserById = createUseGetUserByIdHook(requester);`).
+
+### 5. `schema-sync-requester.ts` (Custom Requester File - User Owned)
+*(Relevant only if `useDefaultRequester: false`. Default path: `<outputDir>/schema-sync-requester.ts`, configurable via `customRequesterConfig.filePath`)*
+*   **Scaffolding:** If `scaffoldRequesterAdapter: true` (default) and this file does not already exist, a lean scaffold is generated.
     ```typescript
-    // Example snippet from the generated users.sgClient.ts
-    const getToken = async (): Promise<string | null> => {
-      // TODO: Implement your token retrieval logic here.
-      // Example: return localStorage.getItem('authToken');
-      console.warn('[SGSchema-Sync Client] getToken() needs to be implemented...');
-      return null;
-    };
-    const configuredRequester = createDefaultSGSyncRequester({ baseURL, getToken });
-    ```
-*   It then calls all imported factories with `configuredRequester` and exports the concrete, ready-to-use API functions (e.g., `export const GetUserById = ...;`) and hooks (e.g., `export const useGetUserById = ...;`).
+    // Example scaffold content (schema-sync-requester.ts)
+    import type { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types'; // Or your local path
 
-### 5. `index.ts` (Barrel Exports)
+    export const customSGSyncRequester: SGSyncRequester = async <TData = any>(
+      options: SGSyncRequesterOptions
+    ): Promise<SGSyncResponse<TData>> => {
+      console.log('Custom SGSyncRequester called with options:', options);
+
+      // TODO: Implement your actual HTTP request logic here.
+      // This could involve using axios, fetch, or your project's existing API service.
+
+      // Example structure:
+      // const { method, url, data, params, headers, responseType, authRequired, context } = options;
+      // if (authRequired) {
+      //   const token = await context?.getToken?.(); // Assuming getToken is passed in context if needed by custom logic
+      //   // Add authorization header
+      // }
+      //
+      // try {
+      //   // const response = await myHttpLib({ method, url, data, params, headers });
+      //   // return {
+      //   //   data: response.data as TData,
+      //   //   status: response.status,
+      //   //   statusText: response.statusText,
+      //   //   headers: response.headers,
+      //   //   originalResponse: response, // Optional: include the original driver's response
+      //   // };
+      // } catch (error) {
+      //   // Handle error, potentially re-throwing or returning a structured error response
+      //   // For example, if using axios and error is AxiosError:
+      //   // if (axios.isAxiosError(error) && error.response) {
+      //   //   return {
+      //   //     data: error.response.data as TData, // Or some error type
+      //   //     status: error.response.status,
+      //   //     statusText: error.response.statusText,
+      //   //     headers: error.response.headers,
+      //   //     originalResponse: error.response,
+      //   //     isError: true,
+      //   //   };
+      //   // }
+      //   // throw error; // Or return a generic error SGSyncResponse
+      // }
+
+      // Placeholder implementation:
+      return Promise.reject(new Error(`'${options.method} ${options.url}' not implemented in custom requester.`));
+    };
+    ```
+*   **User Responsibility:** You need to implement the logic within this function to make HTTP requests using your preferred library (Axios, Fetch, etc.) or integrate with your existing API client/service layer.
+*   This file is **user-owned**. Once scaffolded (or created manually), it will **not be overwritten** by `sg-schema-sync`.
+*   The export name here should match `customRequesterConfig.exportName`.
+
+### 6. `<tag>/index.ts` (Barrel Exports per Tag)
 *   Always exports `* from './types';`.
-*   If `useDefaultRequester: true`: Exports `* from './[tagName][defaultClientFileSuffix]';` (e.g., `* from './users.sgClient';`).
-*   If `useDefaultRequester: false`: Exports `* from './functions';` and `* from './hooks';` (if generated), allowing you to import and use the factories with your custom requester.
+*   Always exports `* from './${generatedClientModuleBasename}';` (e.g., `* from './client';`). This makes all instantiated API functions and hooks available via a single import from the tag directory.
 
 ## Example Usage Scenarios
 
-### Scenario 1: Quick Start with Default Client
+### Scenario 1: Using the Default Requester
 **(Set `useDefaultRequester: true` in `sg-schema-sync.config.js`)**
 
-1.  **Run `pnpm sg-schema-sync ...`**
-    This generates `users.sgClient.ts` (or your custom suffix).
-2.  **Implement `getToken()`:**
-    Open the generated `users.sgClient.ts` file and implement the `getToken` function to retrieve your app's authentication token.
-3.  **Use in your application:**
+1.  **Configure:**
+    In `sg-schema-sync.config.js`:
+    ```javascript
+    module.exports = {
+      input: '...',
+      outputDir: 'src/api/generated',
+      baseURL: 'https://api.example.com/v1',
+      useDefaultRequester: true,
+      defaultRequesterConfig: {
+        getTokenModulePath: '@/utils/auth', // Your module that exports getToken
+        // getTokenExportName: 'getAuthToken', // If not named 'getToken'
+      },
+      // ... other options
+    };
+    ```
+2.  **Implement `getToken`:**
+    Ensure your `getToken` module (e.g., `src/utils/auth.ts`) correctly exports a function that returns `Promise<string | null>`:
     ```typescript
-    // Assuming your output directory is src/api/generated
+    // src/utils/auth.ts
+    export const getToken = async (): Promise<string | null> => {
+      // Your logic to retrieve the token, e.g., from localStorage, async storage, state manager
+      return localStorage.getItem('authToken');
+    };
+    ```
+3.  **Run `pnpm sg-schema-sync`**
+4.  **Use in your application:**
+    The generated `<tag>/client.ts` files will automatically use this setup.
+    ```typescript
+    // Assuming your outputDir is src/api/generated and you have a 'users' tag
     import { GetUserById, useGetUserById } from '@/api/generated/users'; 
-    // Types are also re-exported via the client file or directly from types.ts
-    import type { UserResponse } from '@/api/generated/users/types'; // Or from '@/api/generated/users';
+    // Types are also re-exported:
+    import type { GetUserByIdTypes_Response } from '@/api/generated/users';
 
     async function fetchUserData(id: string) {
       try {
-        // GetUserById now returns SGSyncResponse<UserResponse>
-        const response = await GetUserById(id); 
+        const response = await GetUserById({ pathParams: { userId: id } }); // Parameters are now objects
         if (response.status === 200) {
-          const user: UserResponse = response.data;
+          const user: GetUserByIdTypes_Response = response.data; // Assuming this is the structure
           console.log('User:', user);
         } else {
-          console.error('Failed to fetch user:', response.statusText);
+          console.error('Failed to fetch user:', response.statusText, response.data);
         }
-      } catch (error) {
+      } catch (error: any) { // error will be an SGSyncResponse if the requester caught and returned it as such, or rethrown error
         console.error('Error calling API', error);
+        // if (error.isError && error.status === 401) { /* handle auth error */ }
       }
     }
 
     function UserProfile({ userId }: { userId: string }) {
-      const { data: user, isLoading, error } = useGetUserById(userId);
+      // Pass params as an object: { pathParams: { userId }, queryParams: { ... } }
+      const { data: user, isLoading, error } = useGetUserById({ pathParams: { userId } }); 
       // ... render logic ...
     }
     ```
 
-### Scenario 2: Advanced Integration with Custom Requester
+### Scenario 2: Using a Custom Requester
 **(Set `useDefaultRequester: false` in `sg-schema-sync.config.js`)**
 
-1.  **Run `pnpm sg-schema-sync ...`**
-    This generates `functions.ts` and `hooks.ts` (if `generateHooks:true`) containing factories in tag-specific subdirectories under your output path.
-2.  **Create or Complete your Requester Adapter:**
-    *   If using `scaffoldRequesterAdapter: true` (default) and the file specified by `customRequesterAdapterPath` (default: `sgClientSetup.ts` - placed inside your main output directory) doesn't exist, `sg-schema-sync` will create a scaffold file for you. This scaffold will include TODOs, a template for the adapter function, and commented-out imports and example instantiations for all your generated API tags and their operations.
-    *   Open this file (e.g., `<output_dir>/sgClientSetup.ts` or your custom path). You **must** complete the TODOs: implement the `myCustomSGSyncRequester` function to call your project's existing API request function (mapping options and responses), and then uncomment and verify the import statements and factory instantiations for the APIs you wish to use.
-    *   If the file already exists, or if scaffolding is disabled, you'll need to manually create or update it to import the factories and instantiate them with your custom `SGSyncRequester` implementation.
-
-    ```typescript
-    // Example: src/api/sgClientSetup.ts (after completing the scaffold or manual setup)
-    // ... existing code ...
+1.  **Configure:**
+    In `sg-schema-sync.config.js`:
+    ```javascript
+    module.exports = {
+      input: '...',
+      outputDir: 'src/api/generated',
+      useDefaultRequester: false,
+      customRequesterConfig: {
+        filePath: 'schema-sync-requester.ts', // Relative to outputDir, so placed in src/api/generated/
+        // Or an absolute path: '/abs/path/to/my-requester.ts'
+        // Or a path deeper within outputDir: 'core/my-requester.ts'
+        exportName: 'myAppRequester',
+      },
+      scaffoldRequesterAdapter: true, // Default, scaffolds if filePath doesn't exist
+      // ... other options
+    };
     ```
-3.  **Use in your application:**
+2.  **Implement Custom Requester:**
+    *   Run `pnpm sg-schema-sync`. If `src/api/generated/schema-sync-requester.ts` (based on config above) doesn't exist, it will be scaffolded.
+    *   Open the scaffolded (or manually created) `schema-sync-requester.ts` and implement your HTTP logic. Ensure it exports a function with the name specified in `customRequesterConfig.exportName` (`myAppRequester` in this example).
     ```typescript
-    import { GetUserById, useUserById } from '@/api/sgClientSetup'; // Import from your setup file
-    // ... rest is similar to Scenario 1, but uses your custom requester's behavior ...
+    // src/api/generated/schema-sync-requester.ts (or your custom path)
+    import type { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';
+    import axios from 'axios'; // Or your preferred HTTP client
+
+    export const myAppRequester: SGSyncRequester = async <TData = any>(
+      options: SGSyncRequesterOptions
+    ): Promise<SGSyncResponse<TData>> => {
+      const { method, url, data, params, headers, authRequired, context } = options;
+      
+      const finalHeaders = { ...headers };
+      if (authRequired) {
+        // Example: Get token using a passed-in context function or a global store
+        // const token = await someAuthService.getToken(); 
+        // if (token) finalHeaders['Authorization'] = `Bearer ${token}`;
+        console.warn(`[${method} ${url}] Auth required, but token logic not fully implemented in this example custom requester.`);
+      }
+
+      try {
+        const response = await axios.request({
+          url,
+          method,
+          data,
+          params,
+          headers: finalHeaders,
+          baseURL: context?.baseURL, // Assuming baseURL is passed in context if needed
+        });
+        return {
+          data: response.data as TData,
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+          originalResponse: response,
+        };
+      } catch (err: any) {
+        if (axios.isAxiosError(err) && err.response) {
+          return {
+            data: err.response.data as TData, // Or a specific error type
+            status: err.response.status,
+            statusText: err.response.statusText,
+            headers: err.response.headers,
+            originalResponse: err.response,
+            isError: true,
+          };
+        }
+        // Fallback for non-Axios errors or errors without a response
+        // Option 1: Rethrow the error. The calling code (generated function) will catch it.
+        // throw new Error(`Request failed: ${err.message || 'Unknown error'}`); 
+        // Option 2: Return a generic error SGSyncResponse. This standardizes error handling.
+        return {
+            data: null as TData,
+            status: (err.response?.status) || 0, // Use error status or a default
+            statusText: (err.response?.statusText) || err.message || 'Unknown error',
+            headers: (err.response?.headers) || {},
+            isError: true,
+            originalResponse: err.response, // Include original response if available
+        };
+      }
+    };
+    ```
+3.  **Run `pnpm sg-schema-sync` again** (if you created/modified the requester after an initial run that didn't find it). The per-tag `client.ts` files will be re-generated to use your custom requester.
+4.  **Use in your application:**
+    Imports and usage look identical to Scenario 1, as the per-tag `client.ts` handles the wiring.
+    ```typescript
+    // Assuming your outputDir is src/api/generated and you have a 'users' tag
+    import { GetUserById, useGetUserById } from '@/api/generated/users';
+    // ... rest is similar to Scenario 1 ...
     ```
 
 ## Dependencies
@@ -278,14 +458,13 @@ Contains TypeScript interfaces for request bodies, parameters, and responses. (N
 *   `axios`: (A dependency of `sg-schema-sync` itself for its default requester and spec fetching).
 
 ## Pitfalls & Known Issues
-*   **OpenAPI Specification Quality:** The accuracy of generated code heavily depends on the input spec. Ensure `security` definitions are correct for `authRequire` to work as expected.
-*   **Default Requester Auth:** The `getToken()` in the auto-generated client file is a placeholder and **must** be implemented for authentication to work with the default requester.
-*   **Custom Requester Mapping:** When creating a custom requester adapter, ensure thorough mapping between `SGSyncRequesterOptions`/`SGSyncResponse` and your project's own types.
-*   **Naming Collisions:** While efforts are made to generate unique names based on paths and methods, extremely similar paths might still rarely lead to collisions. Review generated files if your spec has highly ambiguous paths.
-*   **Parameter Handling:** Only basic query parameter handling is implemented.
-*   **Content Types:** Assumes `application/json`.
-*   **Authentication:** Pass auth details via the `config` parameter.
-*   **React Query Version:** Assumes TanStack Query v4/v5 API compatibility.
+*   **OpenAPI Specification Quality:** The accuracy of generated code heavily depends on the input spec. Ensure `security` definitions are correct for `authRequired` to work as expected in the `SGSyncRequesterOptions`.
+*   **Default Requester Auth:** You **must** correctly configure `defaultRequesterConfig.getTokenModulePath` and ensure your `getToken` function works for authentication with the default requester.
+*   **Custom Requester Implementation:** When creating a custom requester, ensure thorough mapping between `SGSyncRequesterOptions`/`SGSyncResponse` and your project's own types/error handling. Pay attention to `authRequired` and how you handle token injection. The `context` property in `SGSyncRequesterOptions` can be used to pass additional utilities (like a `baseURL` or even your `getToken` if you prefer that pattern over the default requester's direct import).
+*   **Naming Collisions:** While efforts are made to generate unique names, review generated files if your spec has highly ambiguous paths.
+*   **Parameter Handling in Examples:** The `GetUserById({ pathParams: { userId: id } })` syntax in usage examples shows how parameters are now passed as structured objects. Ensure your actual calls match the generated function signatures.
+*   **Content Types:** Primarily assumes `application/json`.
+*   **React Query Version:** Assumes TanStack Query v4/v5 API compatibility for generated hooks.
 
 ---
 

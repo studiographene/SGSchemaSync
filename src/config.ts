@@ -128,6 +128,13 @@ export interface PackageConfig {
    * @default undefined
    */
   stripPathPrefix?: string;
+  /**
+   * When `useDefaultRequester` is `false`, if this is `true` (the default) and the custom requester file
+   * (specified by `customRequesterConfig.filePath`) does not exist, the tool will generate a basic scaffold for it.
+   * Set to `false` to prevent scaffold generation.
+   * @default true
+   */
+  scaffoldRequesterAdapter?: boolean;
 }
 
 /**
@@ -145,7 +152,7 @@ export interface ResolvedPackageConfig
     | "timeout"
     | "generateHooks"
     | "generateFunctions"
-    // input and outputDir are also handled specially but are not in Omit as they are directly in PackageConfig and re-declared
+    // `scaffoldRequesterAdapter` is optional and carries over, no need to list in Omit
   > {
   input: string | Record<string, any>; // Required
   outputDir: string; // Required
@@ -165,6 +172,7 @@ export interface ResolvedPackageConfig
   generateTypesNames?: string;
   generateHooksNames?: string;
   stripPathPrefix?: string;
+  scaffoldRequesterAdapter: boolean; // Required in Resolved, default applied
 }
 
 // Helper function to load and resolve configuration (conceptual)
@@ -195,6 +203,7 @@ export async function loadAndResolveConfig(
   const timeout = mergedConfig.timeout ?? 10000;
   const generateHooks = mergedConfig.generateHooks ?? true;
   const generateFunctions = mergedConfig.generateFunctions ?? true;
+  const scaffoldRequesterAdapter = mergedConfig.scaffoldRequesterAdapter ?? true; // Default to true
 
   // Resolve new naming and path stripping properties, falling back to defaults from defaultConfig
   const generateFunctionNames = mergedConfig.generateFunctionNames ?? defaultConfig.generateFunctionNames;
@@ -250,6 +259,7 @@ export async function loadAndResolveConfig(
     generateTypesNames,
     generateHooksNames,
     stripPathPrefix,
+    scaffoldRequesterAdapter,
     // Conditionally required
     ...(useDefaultRequester &&
       resolvedDefaultRequesterConfig && { defaultRequesterConfig: resolvedDefaultRequesterConfig }),
@@ -269,10 +279,11 @@ export const defaultConfig: Partial<PackageConfig> = {
   generateFunctionNames: "{method}{Endpoint}",
   generateTypesNames: "{Method}{Endpoint}Types",
   generateHooksNames: "use{Method}{Endpoint}",
+  scaffoldRequesterAdapter: true, // Default value
   // stripPathPrefix is implicitly undefined as it's optional in PackageConfig
   // stripPathPrefix: undefined, // Can be omitted
   customRequesterConfig: {
-    filePath: "./sg-requester.ts",
+    filePath: "schema-sync-requester.ts",
     exportName: "SchemaSyncRequester",
   },
   // defaultRequesterConfig is not set here as it depends on useDefaultRequester being true
