@@ -55,20 +55,7 @@ export async function generateFilesForTag(
   let hooksContent = "";
   let hooksGenerated = false; // Track if any hooks are added for this tag
 
-  // --- Add imports to hooksContent if reactQuery is enabled ---
-  if (reactQueryEnabled) {
-    const hookTopBanner = createTopLevelBanner("hooks");
-    hooksContent += `${hookTopBanner}\n\n`;
-    hooksContent += `// Imports for the requester mechanism\n`;
-    // Corrected import path for requester types
-    hooksContent += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
-    hooksContent += `import * as ${tagImportName} from './types';\n`;
-
-    // Define and sort TanStack Query imports
-    const tanstackImports = ["QueryKey", "useMutation", "UseMutationOptions", "useQuery", "UseQueryOptions"].sort(); // Sort them alphabetically
-
-    hooksContent += `import {\n  ${tanstackImports.join(",\n  ")}\n} from '@tanstack/react-query';\n\n`;
-  }
+  // --- Imports and header for hooksContent will be added AFTER the loop if hooksGenerated is true ---
 
   for (const opInfo of operations) {
     const { operation, path, method } = opInfo;
@@ -359,16 +346,20 @@ export async function generateFilesForTag(
         hooksContent += `    queryOptions?: ${queryOptionsType}\n`;
         hooksContent += `  ) {\n`;
         hooksContent += `    const queryKeyInternal = [${queryKeyParts.join(", ")}] as QueryKey;\n`;
+
+        // Construct the argument string for the function call within queryFn
+        const queryFnCallArgsString = factoryInnerFuncArgsForHookCall
+          .map((arg) => (arg === "params" ? "queryParams" : arg))
+          .join(", ");
+
         hooksContent += `    return useQuery<${finalResponseTypeNameForSig}, Error, ${finalResponseTypeNameForSig}, QueryKey>({\n`;
         hooksContent += `      queryKey: queryKeyInternal,\n`;
         hooksContent += `      queryFn: async () => {\n`;
-        hooksContent += `        const response = await ${functionName}Instance(${factoryInnerFuncArgsForHookCall.join(", ")});\n`;
-        hooksContent += `        return response.data; // Assumes response structure { data: T }
-`;
+        hooksContent += `        const response = await ${functionName}Instance(${queryFnCallArgsString});\n`;
+        hooksContent += `        return response.data; // Assumes response structure { data: T }\n`;
         hooksContent += `      },\n`;
         hooksContent += `      ...(queryOptions || {}),\n`;
         hooksContent += `    });\n`;
-        hooksContent += `  };\n`;
       } else {
         // useMutation
         let mutationVariablesType = "void";
