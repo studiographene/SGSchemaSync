@@ -31,8 +31,23 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   // 1. Normalize line endings first for consistent processing
   let normalizedContent = content.replace(/\r\n/g, "\n");
 
+  // --- BEGIN DEBUG LOGGING ---
+  // console.log("[Debug FS] Before top banner strip:\n", normalizedContent.substring(0, 300));
+  // --- END DEBUG LOGGING ---
+
   // 2. Remove top-level banners/comments using regex
+  const contentBeforeReplace = normalizedContent; // Store before replace
   normalizedContent = normalizedContent.replace(generatedBannerRegex, "");
+
+  // --- BEGIN DEBUG LOGGING ---
+  if (contentBeforeReplace === normalizedContent && generatedBannerRegex.test(contentBeforeReplace)) {
+    console.error("[Debug FS Error] generatedBannerRegex matched but replace had no effect!");
+  } else if (!generatedBannerRegex.test(contentBeforeReplace)) {
+    console.warn("[Debug FS Warn] generatedBannerRegex did not match the content.");
+  }
+  // console.log("[Debug FS] After top banner strip:\n", normalizedContent.substring(0, 300));
+  // --- END DEBUG LOGGING ---
+
   normalizedContent = normalizedContent.replace(standardCommentBlockRegex, "");
 
   // 3. Remove single-line warning comments using regex
