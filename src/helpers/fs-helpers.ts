@@ -61,6 +61,38 @@ export async function writeFileIfChanged(filePath: string, newContent: string, v
     }
     return false; // Indicate file was not written
   } else {
+    if (verbose && fileExists) {
+      console.log(`------------------------------------------------------------`);
+      console.log(`[Debug] Content differs for: ${filePath}`);
+      console.log(`[Debug] Comparing Existing (Stripped) vs. New (Stripped):`);
+      const MAX_LOG_LEN = 500; // Limit log length
+      console.log(`  Existing Len: ${existingContentStripped.length}, New Len: ${newContentStripped.length}`);
+
+      if (existingContentStripped !== newContentStripped) {
+        let diffIndex = -1;
+        for (let i = 0; i < Math.min(existingContentStripped.length, newContentStripped.length); i++) {
+          if (existingContentStripped[i] !== newContentStripped[i]) {
+            diffIndex = i;
+            break;
+          }
+        }
+        if (diffIndex !== -1) {
+          console.log(`  First difference found around index: ${diffIndex}`);
+          const snippetContext = 20;
+          console.log(
+            `    Existing near diff: ...${existingContentStripped.substring(Math.max(0, diffIndex - snippetContext), diffIndex)}[${existingContentStripped[diffIndex] || ""}]${existingContentStripped.substring(diffIndex + 1, diffIndex + 1 + snippetContext)}...`
+          );
+          console.log(
+            `    New near diff:      ...${newContentStripped.substring(Math.max(0, diffIndex - snippetContext), diffIndex)}[${newContentStripped[diffIndex] || ""}]${newContentStripped.substring(diffIndex + 1, diffIndex + 1 + snippetContext)}...`
+          );
+        } else if (existingContentStripped.length !== newContentStripped.length) {
+          console.log(`  Difference is primarily in length.`);
+        }
+      }
+
+      console.log(`------------------------------------------------------------`);
+    }
+
     await fs.mkdir(path.dirname(filePath), { recursive: true }); // Ensure directory exists
     await fs.writeFile(filePath, newContent, "utf-8");
     const action = fileExists ? "Overwritten" : "Written";
