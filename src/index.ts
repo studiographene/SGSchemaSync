@@ -8,6 +8,28 @@ import { OpenAPIV3 } from "openapi-types";
 import $RefParser from "@apidevtools/json-schema-ref-parser";
 import { ResolvedPackageConfig, defaultConfig as baseDefaultConfig } from "./config";
 import { writeFileIfChanged } from "./helpers/fs-helpers";
+import prettier from "prettier";
+
+// Helper to format content using Prettier
+async function formatContent(content: string, prettierConfigPath?: string, filePath?: string): Promise<string> {
+  try {
+    const options: prettier.Options = {
+      parser: "typescript", // Assume TypeScript for all generated files
+      ...(await prettier.resolveConfig(prettierConfigPath || process.cwd(), { editorconfig: true })),
+    };
+    if (prettierConfigPath) {
+      options.config = prettierConfigPath;
+    }
+    if (filePath) {
+      options.filepath = filePath;
+    }
+    return await prettier.format(content, options);
+  } catch (error) {
+    console.warn(`⚠️ Prettier formatting failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`   Falling back to unformatted content for comparison/writing.`);
+    return content; // Return original content if formatting fails
+  }
+}
 
 // This interface is for the direct settings for an HTTP request, used by loadAndParseSpec
 interface RequestConfig {
@@ -125,13 +147,39 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
       const typesFilePath = path.join(tagOutputDir, "types.ts");
       const functionsFilePath = path.join(tagOutputDir, "functions.ts");
-      await writeFileIfChanged(typesFilePath, typesContent, packageConfig.verbose);
-      await writeFileIfChanged(functionsFilePath, functionsContent, packageConfig.verbose);
+
+      // --- Format content BEFORE writing/comparison ---
+      let formattedTypesContent = typesContent;
+      let formattedFunctionsContent = functionsContent;
+      let formattedHooksContent = hooksContent;
+
+      if (packageConfig.formatWithPrettier) {
+        if (packageConfig.verbose) console.log(`  Formatting generated content for ${tagName}...`);
+        // Pass file paths for potentially better config resolution
+        formattedTypesContent = await formatContent(typesContent, packageConfig.prettierConfigPath, typesFilePath);
+        formattedFunctionsContent = await formatContent(
+          functionsContent,
+          packageConfig.prettierConfigPath,
+          functionsFilePath
+        );
+        if (packageConfig.generateHooks && hooksContent.trim()) {
+          formattedHooksContent = await formatContent(
+            hooksContent,
+            packageConfig.prettierConfigPath,
+            path.join(tagOutputDir, "hooks.ts")
+          );
+        }
+      }
+
+      // --- Write files using the helper with FORMATTED content ---
+      await writeFileIfChanged(typesFilePath, formattedTypesContent, packageConfig.verbose);
+      await writeFileIfChanged(functionsFilePath, formattedFunctionsContent, packageConfig.verbose);
 
       let hooksFileGenerated = false;
       if (packageConfig.generateHooks && hooksContent.trim()) {
         const hooksFilePath = path.join(tagOutputDir, "hooks.ts");
-        await writeFileIfChanged(hooksFilePath, hooksContent, packageConfig.verbose);
+        // Use the formatted content here
+        await writeFileIfChanged(hooksFilePath, formattedHooksContent, packageConfig.verbose);
         hooksFileGenerated = true;
       }
       if (packageConfig.verbose && packageConfig.generateHooks && !hooksContent.trim()) {
@@ -225,7 +273,19 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         }
         clientModuleContent += `\n`;
       }
-      await writeFileIfChanged(clientModuleFilePath, clientModuleContent, packageConfig.verbose);
+
+      // --- Format client module content ---
+      let formattedClientModuleContent = clientModuleContent;
+      if (packageConfig.formatWithPrettier) {
+        formattedClientModuleContent = await formatContent(
+          clientModuleContent,
+          packageConfig.prettierConfigPath,
+          clientModuleFilePath
+        );
+      }
+
+      // Use the new helper function with formatted content
+      await writeFileIfChanged(clientModuleFilePath, formattedClientModuleContent, packageConfig.verbose);
 
       // Generate and write the main index.ts for the tag
       let indexContent = "";
@@ -237,7 +297,16 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       // they are consumed by the generated client module which then exports the final instances.
 
       const indexFilePath = path.join(tagOutputDir, "index.ts");
-      await writeFileIfChanged(indexFilePath, indexContent, packageConfig.verbose);
+
+      // --- Format index file content ---
+      let formattedIndexContent = indexContent;
+      if (packageConfig.formatWithPrettier) {
+        formattedIndexContent = await formatContent(indexContent, packageConfig.prettierConfigPath, indexFilePath);
+      }
+
+      // Use the new helper function with formatted content
+      await writeFileIfChanged(indexFilePath, formattedIndexContent, packageConfig.verbose);
+
       if (packageConfig.verbose) console.log(`Finished processing tag: ${tagName}`);
     }
 
@@ -272,27 +341,6 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
           `\nℹ️ Custom requester file already exists at ${actualAbsoluteCustomRequesterPath}. No scaffold generated.`
         );
       }
-    }
-
-    // Format generated files with Prettier if enabled
-    const { formatWithPrettier, prettierConfigPath } = packageConfig || {};
-
-    if (formatWithPrettier) {
-      const prettierBin = path.join(process.cwd(), "node_modules", ".bin", "prettier");
-      const prettierArgs = ["--write", `"${baseOutputDir}/**/*.ts"`];
-      if (prettierConfigPath) {
-        prettierArgs.push("--config", prettierConfigPath);
-      }
-      if (packageConfig.verbose) console.log(`Attempting to format output with Prettier...`);
-      try {
-        execSync(`${prettierBin} ${prettierArgs.join(" ")}`, { stdio: "inherit" });
-        if (packageConfig.verbose) console.log("Prettier formatting successful.");
-      } catch (error) {
-        console.warn("Prettier formatting failed. Please ensure Prettier is installed and configured correctly.");
-        console.warn(error);
-      }
-    } else {
-      console.log("Prettier formatting skipped as per configuration.");
     }
 
     console.log(`Successfully generated API client files in ${baseOutputDir}`);
