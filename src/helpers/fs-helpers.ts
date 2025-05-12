@@ -10,6 +10,10 @@ const standardCommentBlockRegex =
 // Matches the dynamically added warning comments about type generation failures
 const typeGenWarningCommentRegex = /^\s*\/\/\s*⚠️\s*Type generation failed for.*$[\r\n]*/gm;
 
+// Matches the warning comments added inside functions/hooks when generation fails
+const funcHookWarningCommentRegex =
+  /^\s*\/\/\s*⚠️\s*WARNING: (?:Request Body|Parameters|Response) type generation failed.*$[\r\n]*/gm;
+
 /**
  * Removes known generated header comments from file content.
  * Also normalizes line endings to LF (\n).
@@ -20,6 +24,7 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   let stripped = content.replace(generatedBannerRegex, "");
   stripped = stripped.replace(standardCommentBlockRegex, "");
   stripped = stripped.replace(typeGenWarningCommentRegex, "");
+  stripped = stripped.replace(funcHookWarningCommentRegex, "");
   return stripped.replace(/\r\n/g, "\n").trim(); // Normalize line endings and trim whitespace
 }
 
