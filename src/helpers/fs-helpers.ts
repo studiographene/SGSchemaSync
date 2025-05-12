@@ -32,54 +32,17 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   normalizedContent = normalizedContent.replace(typeGenWarningCommentRegex, "");
   normalizedContent = normalizedContent.replace(funcHookWarningCommentRegex, "");
 
-  // 4. Remove multi-line /*--- ... ---*/ operation banners line by line (Revised Logic)
+  // 4. Remove multi-line /*--- ... ---*/ operation banners line by line (Simplified Logic)
   const lines = normalizedContent.split("\n");
   const filteredLines: string[] = [];
-  let insideOperationBanner = false;
+  // No longer track 'insideOperationBanner' state
   const bannerStartSimpleRegex = /^\s*\/\*---/; // Match start, allowing leading whitespace
   const bannerEndSimpleRegex = /\*---\*\/\s*$/; // Match end, allowing trailing whitespace
   const generatedOnLineRegex = /^\s*\*\s*Generated on:/; // Match the timestamp line
 
   for (const line of lines) {
-    let isStartLine = false;
-    let isEndLine = false;
-    let isTimestampLine = false;
-
-    // Check line characteristics
-    if (bannerStartSimpleRegex.test(line)) {
-      isStartLine = true;
-      // Handle single-line banner case immediately
-      if (bannerEndSimpleRegex.test(line)) {
-        isEndLine = true;
-      }
-    } else if (insideOperationBanner && bannerEndSimpleRegex.test(line)) {
-      // It's an end line if we were already inside
-      isEndLine = true;
-    }
-
-    // Check for timestamp only if we are starting or already inside a banner
-    if (isStartLine || insideOperationBanner) {
-      if (generatedOnLineRegex.test(line)) {
-        isTimestampLine = true;
-      }
-    }
-
-    // Determine if the current line should be skipped
-    // Skip if it's the start marker, the end marker, the timestamp line, OR
-    // if we are inside a banner block (and it's not the end line we just detected)
-    const skipLine = isStartLine || isEndLine || isTimestampLine || (insideOperationBanner && !isEndLine);
-
-    // Update the state for the *next* line iteration *after* processing the current one
-    if (isStartLine) {
-      insideOperationBanner = true;
-    }
-    // Reset the flag only *after* processing the line that contains the end marker
-    if (isEndLine) {
-      insideOperationBanner = false;
-    }
-
-    // Only add the line if it wasn't skipped
-    if (!skipLine) {
+    // Skip the line if it matches the start, end, or timestamp pattern
+    if (!bannerStartSimpleRegex.test(line) && !bannerEndSimpleRegex.test(line) && !generatedOnLineRegex.test(line)) {
       filteredLines.push(line);
     }
   }
