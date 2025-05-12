@@ -36,8 +36,8 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   const lines = normalizedContent.split("\n");
   const filteredLines: string[] = [];
   let insideOperationBanner = false;
-  const bannerStartSimpleRegex = /^\/\*---/; // Simplified start regex
-  const bannerEndSimpleRegex = /\*---\*\//; // Simplified end regex with escaped slash
+  const bannerStartSimpleRegex = /^\s*\/\*---/; // Match start, allowing leading whitespace
+  const bannerEndSimpleRegex = /\*---\*\/\s*$/; // Match end, allowing trailing whitespace
 
   for (const line of lines) {
     let skipLine = false;
