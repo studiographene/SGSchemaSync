@@ -7,6 +7,7 @@ import { generateFilesForTag } from "./generator";
 import { OpenAPIV3 } from "openapi-types";
 import $RefParser from "@apidevtools/json-schema-ref-parser";
 import { ResolvedPackageConfig, defaultConfig as baseDefaultConfig } from "./config";
+import { writeFileIfChanged } from "./helpers/fs-helpers";
 
 // This interface is for the direct settings for an HTTP request, used by loadAndParseSpec
 interface RequestConfig {
@@ -124,16 +125,13 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
       const typesFilePath = path.join(tagOutputDir, "types.ts");
       const functionsFilePath = path.join(tagOutputDir, "functions.ts");
-      await fs.writeFile(typesFilePath, typesContent, "utf-8");
-      console.log(`  -> Types written to ${typesFilePath}`);
-      await fs.writeFile(functionsFilePath, functionsContent, "utf-8");
-      console.log(`  -> Function factories written to ${functionsFilePath}`);
+      await writeFileIfChanged(typesFilePath, typesContent, packageConfig.verbose);
+      await writeFileIfChanged(functionsFilePath, functionsContent, packageConfig.verbose);
 
       let hooksFileGenerated = false;
       if (packageConfig.generateHooks && hooksContent.trim()) {
         const hooksFilePath = path.join(tagOutputDir, "hooks.ts");
-        await fs.writeFile(hooksFilePath, hooksContent, "utf-8");
-        console.log(`  -> Hook factories written to ${hooksFilePath}`);
+        await writeFileIfChanged(hooksFilePath, hooksContent, packageConfig.verbose);
         hooksFileGenerated = true;
       }
       if (packageConfig.verbose && packageConfig.generateHooks && !hooksContent.trim()) {
@@ -227,8 +225,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         }
         clientModuleContent += `\n`;
       }
-      await fs.writeFile(clientModuleFilePath, clientModuleContent, "utf-8");
-      console.log(`  -> Client module written to ${clientModuleFilePath}`);
+      await writeFileIfChanged(clientModuleFilePath, clientModuleContent, packageConfig.verbose);
 
       // Generate and write the main index.ts for the tag
       let indexContent = "";
@@ -240,8 +237,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
       // they are consumed by the generated client module which then exports the final instances.
 
       const indexFilePath = path.join(tagOutputDir, "index.ts");
-      await fs.writeFile(indexFilePath, indexContent, "utf-8");
-      console.log(`  -> Index file written to ${indexFilePath}`);
+      await writeFileIfChanged(indexFilePath, indexContent, packageConfig.verbose);
       if (packageConfig.verbose) console.log(`Finished processing tag: ${tagName}`);
     }
 
