@@ -41,29 +41,41 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   const generatedOnLineRegex = /^\s*\*\s*Generated on:/; // Match the timestamp line
 
   for (const line of lines) {
-    let skipLine = false;
+    let isStartLine = false;
+    let isEndLine = false;
+    let isTimestampLine = false;
 
-    // Check start first
+    // Check line characteristics
     if (bannerStartSimpleRegex.test(line)) {
-      insideOperationBanner = true;
-      skipLine = true; // Always skip the start line
-      // If the same line also ends the banner, reset the flag immediately
+      isStartLine = true;
+      // Handle single-line banner case immediately
       if (bannerEndSimpleRegex.test(line)) {
-        insideOperationBanner = false;
+        isEndLine = true;
       }
+    } else if (insideOperationBanner && bannerEndSimpleRegex.test(line)) {
+      // It's an end line if we were already inside
+      isEndLine = true;
     }
-    // If we are currently inside (and it wasn't the start line we just processed)
-    else if (insideOperationBanner) {
-      skipLine = true; // Skip this line
-      // Check if this line ends the banner
-      if (bannerEndSimpleRegex.test(line)) {
-        insideOperationBanner = false; // Reset flag for the next line
+
+    // Check for timestamp only if we are starting or already inside a banner
+    if (isStartLine || insideOperationBanner) {
+      if (generatedOnLineRegex.test(line)) {
+        isTimestampLine = true;
       }
     }
 
-    // Explicitly check for and skip the 'Generated on:' line, even if outside a banner (though unlikely)
-    if (!skipLine && generatedOnLineRegex.test(line)) {
-      skipLine = true;
+    // Determine if the current line should be skipped
+    // Skip if it's the start marker, the end marker, the timestamp line, OR
+    // if we are inside a banner block (and it's not the end line we just detected)
+    const skipLine = isStartLine || isEndLine || isTimestampLine || (insideOperationBanner && !isEndLine);
+
+    // Update the state for the *next* line iteration *after* processing the current one
+    if (isStartLine) {
+      insideOperationBanner = true;
+    }
+    // Reset the flag only *after* processing the line that contains the end marker
+    if (isEndLine) {
+      insideOperationBanner = false;
     }
 
     // Only add the line if it wasn't skipped
