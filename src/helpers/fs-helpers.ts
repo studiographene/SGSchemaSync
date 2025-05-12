@@ -32,33 +32,38 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   normalizedContent = normalizedContent.replace(typeGenWarningCommentRegex, "");
   normalizedContent = normalizedContent.replace(funcHookWarningCommentRegex, "");
 
-  // 4. Remove multi-line /*--- ... ---*/ operation banners line by line
+  // 4. Remove multi-line /*--- ... ---*/ operation banners line by line (Revised Logic)
   const lines = normalizedContent.split("\n");
   const filteredLines: string[] = [];
   let insideOperationBanner = false;
-  const bannerStartRegex = /^\s*\/\*---/;
-  const bannerEndRegex = /\*---\*\/\s*$/;
+  const bannerStartSimpleRegex = /^\s*\/\*---/; // Simpler start regex
+  const bannerEndSimpleRegex = /\*---\*\/\s*$/; // Simpler end regex
 
   for (const line of lines) {
-    if (bannerStartRegex.test(line)) {
+    let skipLine = false;
+
+    // Check start first
+    if (bannerStartSimpleRegex.test(line)) {
       insideOperationBanner = true;
-      // Check if it's a single-line banner
-      if (bannerEndRegex.test(line)) {
+      skipLine = true; // Always skip the start line
+      // If the same line also ends the banner, reset the flag immediately
+      if (bannerEndSimpleRegex.test(line)) {
         insideOperationBanner = false;
       }
-      continue; // Skip the start line
     }
-
-    if (insideOperationBanner) {
+    // If we are currently inside (and it wasn't the start line we just processed)
+    else if (insideOperationBanner) {
+      skipLine = true; // Skip this line
       // Check if this line ends the banner
-      if (bannerEndRegex.test(line)) {
-        insideOperationBanner = false;
+      if (bannerEndSimpleRegex.test(line)) {
+        insideOperationBanner = false; // Reset flag for the next line
       }
-      continue; // Skip lines inside the banner
     }
 
-    // If not inside a banner, keep the line
-    filteredLines.push(line);
+    // Only add the line if it wasn't skipped
+    if (!skipLine) {
+      filteredLines.push(line);
+    }
   }
 
   // 5. Join lines back and trim whitespace
