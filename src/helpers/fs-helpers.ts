@@ -15,7 +15,8 @@ const funcHookWarningCommentRegex =
   /^\s*\/\/\s*⚠️\s*WARNING: (?:Request Body|Parameters|Response) type generation failed.*$[\r\n]*/gm;
 
 // Matches the operation group banners added between operations
-const operationGroupBannerRegex = /^\s*\/\*---\s*[\r\n]+(?:\s*\*.*[\r\n]+)+\s*\*---\*\/\s*[\r\n]*/gm;
+// This version aims to be more robust by matching any character including newlines between the start/end markers
+const operationGroupBannerRegex = /^\s*\/\*---\s*[\s\S]*?\s*\*---\*\/\s*[\r\n]*/gm;
 
 /**
  * Removes known generated header comments from file content.
