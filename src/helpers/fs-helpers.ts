@@ -34,7 +34,7 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   const filteredLines: string[] = [];
   // Define patterns for the banner structure
   const bannerLine1Pattern = /^\/\*+$/; // Line 1: /* followed only by *
-  const bannerLine2Start = " * Generated"; // Start of timestamp line
+  const bannerLine2Regex = /^\*\s+Generated/; // Regex for timestamp line: *, one or more spaces, Generated
   const bannerLine3Start = " * DO NOT EDIT"; // Start of warning line
   const bannerLine4Pattern = /^ \*+\*\/$/; // Line 4: Space, one or more *, */
 
@@ -43,7 +43,7 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
     // Skip lines matching the specific banner structure
     if (
       bannerLine1Pattern.test(trimmedLine) ||
-      trimmedLine.startsWith(bannerLine2Start) ||
+      bannerLine2Regex.test(trimmedLine) || // Use regex for timestamp line
       trimmedLine.startsWith(bannerLine3Start) ||
       bannerLine4Pattern.test(line) // Use original line for pattern with leading space
     ) {
