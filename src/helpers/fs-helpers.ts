@@ -36,8 +36,8 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   const lines = normalizedContent.split("\n");
   const filteredLines: string[] = [];
   let insideOperationBanner = false;
-  const bannerStartSimpleRegex = /^\s*\/\*---/; // Simpler start regex
-  const bannerEndSimpleRegex = /\*---\*\/\s*$/; // Simpler end regex
+  const bannerStartSimpleRegex = /^\/\*---/; // Simplified start regex
+  const bannerEndSimpleRegex = /\*---\*\//; // Simplified end regex with escaped slash
 
   for (const line of lines) {
     let skipLine = false;
@@ -71,7 +71,7 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
 }
 
 /**
- * Writes content to a file only if the significant content (excluding known headers) has changed.
+ * Writes content to a file only if the significant content (excluding known headers/banners) has changed.
  * Creates the directory if it doesn't exist.
  *
  * @param filePath Absolute path to the file.
@@ -122,10 +122,22 @@ export async function writeFileIfChanged(filePath: string, newContent: string, v
           console.log(`  First difference found around index: ${diffIndex}`);
           const snippetContext = 20;
           console.log(
-            `    Existing near diff: ...${existingContentStripped.substring(Math.max(0, diffIndex - snippetContext), diffIndex)}[${existingContentStripped[diffIndex] || ""}]${existingContentStripped.substring(diffIndex + 1, diffIndex + 1 + snippetContext)}...`
+            `    Existing near diff: ...${existingContentStripped.substring(
+              Math.max(0, diffIndex - snippetContext),
+              diffIndex
+            )}[${existingContentStripped[diffIndex] || ""}]${existingContentStripped.substring(
+              diffIndex + 1,
+              diffIndex + 1 + snippetContext
+            )}...`
           );
           console.log(
-            `    New near diff:      ...${newContentStripped.substring(Math.max(0, diffIndex - snippetContext), diffIndex)}[${newContentStripped[diffIndex] || ""}]${newContentStripped.substring(diffIndex + 1, diffIndex + 1 + snippetContext)}...`
+            `    New near diff:      ...${newContentStripped.substring(
+              Math.max(0, diffIndex - snippetContext),
+              diffIndex
+            )}[${newContentStripped[diffIndex] || ""}]${newContentStripped.substring(
+              diffIndex + 1,
+              diffIndex + 1 + snippetContext
+            )}...`
           );
         } else if (existingContentStripped.length !== newContentStripped.length) {
           console.log(`  Difference is primarily in length.`);
