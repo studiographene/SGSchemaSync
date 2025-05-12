@@ -38,6 +38,7 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
   let insideOperationBanner = false;
   const bannerStartSimpleRegex = /^\s*\/\*---/; // Match start, allowing leading whitespace
   const bannerEndSimpleRegex = /\*---\*\/\s*$/; // Match end, allowing trailing whitespace
+  const generatedOnLineRegex = /^\s*\*\s*Generated on:/; // Match the timestamp line
 
   for (const line of lines) {
     let skipLine = false;
@@ -58,6 +59,11 @@ function stripGeneratedHeadersAndNormalize(content: string): string {
       if (bannerEndSimpleRegex.test(line)) {
         insideOperationBanner = false; // Reset flag for the next line
       }
+    }
+
+    // Explicitly check for and skip the 'Generated on:' line, even if outside a banner (though unlikely)
+    if (!skipLine && generatedOnLineRegex.test(line)) {
+      skipLine = true;
     }
 
     // Only add the line if it wasn't skipped
