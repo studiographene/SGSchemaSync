@@ -283,7 +283,7 @@ ${indentedSummary}
       }
       ...(callSpecificOptions || {}),
     });
-${defaultResponseType === "void" ? "    return;" : "    return response.data;"}
+${defaultResponseType === "void" ? "    return undefined as TResponse; // Explicitly return undefined cast to TResponse" : "    return response.data;"}
   };
 }
 `;

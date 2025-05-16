@@ -15,19 +15,62 @@ Files are organized into **tag-based directories**, where the tag is determined 
 
 SGSchema-Sync now employs a **factory-based approach** for generating API functions and hooks, coupled with a flexible requester system:
 
+**⚠️ BREAKING CHANGE in vNEXT: Updated `SGSyncRequester` Interface ⚠️**
+
+The `SGSyncRequester` abstraction has been updated to provide better type safety and flexibility for request and response overrides.
+
+*   **Previous:** `SGSyncRequester` was a direct function type:
+    `type SGSyncRequester = (options: SGSyncRequesterOptions) => Promise<SGSyncResponse<any>>`
+*   **New:** `SGSyncRequester` is now an **interface** requiring an object with a `request` method:
+    ```typescript
+    export interface SGSyncRequester {
+      request: <TResponseData = any, TRequestBody = any, TQueryParams = any>(
+        options: SGSyncRequesterOptions<TRequestBody, TQueryParams>
+      ) => Promise<SGSyncResponse<TResponseData>>;
+    }
+    ```
+*   **`SGSyncRequesterOptions` is now generic:**
+    `SGSyncRequesterOptions<TRequestBody = any, TQueryParams = any>` allowing for typed `data` (request body) and `params` (query parameters).
+
+**Impact on Custom Requesters:**
+If you have implemented a custom requester, you **must** update it to conform to this new interface. Instead of exporting a single function, you now need to export an object that has a `request` method with the specified generic signature.
+
+**Example of updated custom requester structure:**
+```typescript
+// your-custom-requester.ts
+import type { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';
+
+export const myCustomRequester: SGSyncRequester = {
+  async request<TResponseData = any, TRequestBody = any, TQueryParams = any>(
+    options: SGSyncRequesterOptions<TRequestBody, TQueryParams>
+  ): Promise<SGSyncResponse<TResponseData>> {
+    // Your existing request logic here, adapted to use options.data, options.params
+    // Ensure you return a Promise<SGSyncResponse<TResponseData>>
+    const { method, url, data, params, headers, authRequire } = options;
+
+    // ... build request, make call ...
+
+    // Example return (actual implementation will vary)
+    // return { data: responseData as TResponseData, status, statusText, headers, config: options };
+    throw new Error("Not implemented");
+  }
+};
+```
+The `createDefaultSGSyncRequester` provided by this tool has been updated to conform to this new interface.
+
 1.  **Core Generation (Factories):**
     *   `functions.ts` (per tag): Contains factory functions (e.g., `createGetProductFunction(requester)`) for each API operation. These factories take an `SGSyncRequester` instance and return an actual async function to call the API.
     *   `hooks.ts` (per tag, if `generateHooks: true`): Contains factory functions (e.g., `createUseGetProductHook(requester)`) for TanStack Query hooks. These also take an `SGSyncRequester`.
     *   `types.ts` (per tag): Contains all TypeScript request/response types for that tag's operations.
 
 2.  **Requester Abstraction (`SGSyncRequester`):**
-    *   The generated factories depend on an `SGSyncRequester` function type (defined in `sg-schema-sync/requester-types`). This function is responsible for making the actual HTTP request.
+    *   The generated factories depend on an `SGSyncRequester` **interface** (defined in `sg-schema-sync/requester-types`). This interface mandates an object with a `request` method responsible for making the actual HTTP request.
     *   You have two main options for providing this requester:
         *   **Default Requester (`useDefaultRequester: true`):**
             *   The tool provides a default requester (`createDefaultSGSyncRequester`) based on Axios/Fetch.
             *   You must configure `defaultRequesterConfig.getTokenModulePath` (and optionally `defaultRequesterConfig.getTokenExportName`) in your `sg-schema-sync.config.js` to point to your module that exports a `getToken(): Promise<string | null>` function for handling authentication. The `baseURL` from your config is also used.
         *   **Custom Requester (`useDefaultRequester: false`):**
-            *   You provide your own `SGSyncRequester` implementation.
+            *   You provide your own `SGSyncRequester` implementation (an object with a `request` method).
             *   This is configured via `customRequesterConfig.filePath` (e.g., `src/api/schema-sync-requester.ts`) and `customRequesterConfig.exportName` (e.g., `myCustomSGSyncRequester`) in your `sg-schema-sync.config.js`.
 
 3.  **Per-Tag Orchestration Client Module (e.g., `user/client.ts`):**
@@ -35,12 +78,12 @@ SGSchema-Sync now employs a **factory-based approach** for generating API functi
     *   This module imports the necessary function/hook factories for the tag (from `./functions.ts` and `./hooks.ts`).
     *   It then imports and configures the chosen requester:
         *   If using the **default requester**, it imports `createDefaultSGSyncRequester` and your `getToken` function (from the configured path), instantiates the default requester with `baseURL` and `getToken`.
-        *   If using a **custom requester**, it imports your custom requester function from the configured path and export name.
+        *   If using a **custom requester**, it imports your custom requester **object** (conforming to `SGSyncRequester`) from the configured path and export name.
     *   Finally, it instantiates all factories with this chosen requester and exports the ready-to-use API functions and hooks for that tag.
 
 4.  **Scaffolding for Custom Requesters (`schema-sync-requester.ts`):**
     *   If you set `useDefaultRequester: false` and `scaffoldRequesterAdapter: true` (default), and the file specified in `customRequesterConfig.filePath` does not exist, the tool will generate a **lean scaffold file** (default name: `schema-sync-requester.ts`, placed in your main output directory).
-    *   This scaffold provides a basic `SGSyncRequester` function boilerplate. It is **your responsibility** to fill in the actual HTTP request logic. This file is user-owned and will not be overwritten once created.
+    *   This scaffold provides a basic `SGSyncRequester` object boilerplate. It is **your responsibility** to fill in the actual HTTP request logic in its `request` method. This file is user-owned and will not be overwritten once created.
 
 5.  **Barrel Exports (`index.ts` per tag):**
     *   Each tag directory (e.g., `users/`) gets an `index.ts` that re-exports all types from `types.ts` and all instantiated functions/hooks from the `client.ts` module for easy importing.
@@ -236,88 +279,112 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
             *   Imports your `getToken` function from the module specified in `defaultRequesterConfig.getTokenModulePath` (using `defaultRequesterConfig.getTokenExportName`).
             *   Instantiates the default requester: `const requester = createDefaultSGSyncRequester({ baseURL, getToken });`
         *   **If `useDefaultRequester: false`:**
-            *   Imports your custom requester function from the module specified in `customRequesterConfig.filePath` (using `customRequesterConfig.exportName`).
-            *   `const requester = yourImportedCustomRequester;`
+            *   Imports your custom requester **object** (conforming to `SGSyncRequester`) from the module specified in `customRequesterConfig.filePath` (using `customRequesterConfig.exportName`).
+            *   `const requester = yourImportedCustomRequesterObject;`
 *   **Instantiates Factories:** It calls all imported factory functions/hooks with the `requester` instance.
 *   **Exports:** Exports the concrete, ready-to-use API functions (e.g., `export const GetUserById = createGetUserByIdFunction(requester);`) and hooks (e.g., `export const useGetUserById = createUseGetUserByIdHook(requester);`). These exported items are generic, allowing for type overrides.
 
 ### 5. `schema-sync-requester.ts` (Custom Requester File - User Owned)
 *(Relevant only if `useDefaultRequester: false`. Default path: `<outputDir>/schema-sync-requester.ts`, configurable via `customRequesterConfig.filePath`)*
-*   **Scaffolding:** If `scaffoldRequesterAdapter: true` (default) and this file does not already exist, a lean scaffold is generated.
+*   **Scaffolding:** If `scaffoldRequesterAdapter: true` (default) and this file does not already exist, a lean scaffold is generated. It will now provide an object structure.
     ```typescript
     // Example scaffold content (schema-sync-requester.ts)
     import type { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types'; // Or your local path
 
-    // TODO: Implement your custom requester logic here.
-    // This function needs to make the actual HTTP request based on the options
-    // and return a promise that resolves with an SGSyncResponse.
-    export const customSGSyncRequester: SGSyncRequester = async (options) => {
-      // Example: using fetch
-      // const { url, method, data, params, headers, authRequire, timeout } = options;
-      //
-      // let fullUrl = url;
-      // if (params) {
-      //   const queryString = new URLSearchParams(params).toString();
-      //   if (queryString) {
-      //     fullUrl += `?${queryString}`;
-      //   }
-      // }
-      //
-      // const requestInit: RequestInit = {
-      //   method: method.toUpperCase(),
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //     ...headers,
-      //   },
-      // };
-      //
-      // if (data) {
-      //   requestInit.body = JSON.stringify(data);
-      // }
-      //
-      // // Handle authRequire - you'll need a way to get the token
-      // // if (authRequire) {
-      // //   const token = await getToken(); // Implement or import your getToken function
-      // //   if (token) {
-      // //     (requestInit.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-      // //   }
-      // // }
-      //
-      // try {
-      //   const httpResponse = await fetch(fullUrl, requestInit);
-      //   const responseData = httpResponse.status !== 204 ? await httpResponse.json() : undefined;
-      //
-      //   if (!httpResponse.ok) {
-      //     // Adapt this to your error handling strategy
-      //     return Promise.reject({
-      //       isAxiosError: false, // Or true if using Axios and adapting its error structure
-      //       response: {
-      //         data: responseData,
-      //         status: httpResponse.status,
-      //         statusText: httpResponse.statusText,
-      //         headers: Object.fromEntries(httpResponse.headers.entries()),
-      //       },
-      //       message: `HTTP error ${httpResponse.status}`,
-      //       name: 'HttpError',
-      //     });
-      //   }
-      //
-      //   return {
-      //     data: responseData,
-      //     status: httpResponse.status,
-      //     statusText: httpResponse.statusText,
-      //     headers: Object.fromEntries(httpResponse.headers.entries()),
-      //     config: options, // Pass through the original options
-      //   };
-      // } catch (error) {
-      //   // Adapt this to your error handling strategy
-      //   console.error('Request failed:', error);
-      //   return Promise.reject(error);
-      // }
-      throw new Error('Custom requester not implemented');
+    export const customSGSyncRequester: SGSyncRequester = {
+      async request<TResponseData = any, TRequestBody = any, TQueryParams = any>(
+        options: SGSyncRequesterOptions<TRequestBody, TQueryParams>
+      ): Promise<SGSyncResponse<TResponseData>> {
+        // TODO: Implement your HTTP request logic here.
+        // This is a placeholder and will throw an error.
+        const { method, url, data, params, headers, authRequire } = options;
+        console.error(
+          `[customSGSyncRequester.request] Not implemented for ${method} ${url}`,
+          { data, params, headers, authRequire }
+        );
+        throw new Error('Custom SGSyncRequester not implemented.');
+
+        // Example of what you might do (e.g., using fetch):
+        /*
+        let fullUrlString = url;
+        if (params) {
+          const query = new URLSearchParams();
+          Object.keys(params).forEach(key => {
+            const paramValue = (params as any)[key];
+            if (paramValue !== undefined) {
+              if (Array.isArray(paramValue)) {
+                paramValue.forEach(v => query.append(key, String(v)));
+              } else {
+                query.append(key, String(paramValue));
+              }
+            }
+          });
+          const queryString = query.toString();
+          if (queryString) {
+            fullUrlString += `?${queryString}`;
+          }
+        }
+
+        const effectiveHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...(headers || {}),
+        };
+
+        if (authRequire) {
+          // const token = await yourGetTokenFunction(); // Your token logic
+          // if (token) {
+          //   effectiveHeaders['Authorization'] = `Bearer ${token}`;
+          // } else {
+          //   console.warn(`[customSGSyncRequester.request] Auth required but no token for ${method} ${url}`);
+          // }
+          console.warn(`[customSGSyncRequester.request] Auth required, placeholder for token logic: ${method} ${url}`);
+        }
+
+        try {
+          const response = await fetch(fullUrlString, {
+            method: method.toUpperCase(),
+            headers: effectiveHeaders,
+            body: data ? JSON.stringify(data) : undefined,
+          });
+
+          let responseData: any;
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            responseData = await response.json().catch(() => undefined);
+          } else {
+            responseData = await response.text();
+          }
+
+          const sgResponse: SGSyncResponse<TResponseData> = {
+            data: responseData as TResponseData,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            config: options,
+            originalResponse: response,
+          };
+
+          if (!response.ok) {
+            return { ...sgResponse, isError: true };
+          }
+          return sgResponse;
+        } catch (error: any) {
+          console.error(`[customSGSyncRequester.request] Fetch error for ${method} ${url}:`, error);
+          return {
+            data: null as TResponseData,
+            status: 0,
+            statusText: error.message || 'Fetch error',
+            headers: {},
+            config: options,
+            isError: true,
+            originalResponse: error,
+          };
+        }
+        */
+      }
     };
     ```
-    This scaffold provides a basic structure. You need to implement the actual HTTP request logic (e.g., using `fetch`, `axios`, or your project's HTTP client). It is **your responsibility** to ensure it correctly handles `SGSyncRequesterOptions` and returns an `SGSyncResponse`. This file is user-owned and will **not** be overwritten by the generator once created.
+    This file is **your responsibility** to complete by implementing the `request` method with your actual HTTP client logic (e.g., using `axios`, `fetch`, or your project's standard API service). It will **not be overwritten** by subsequent runs of `sg-schema-sync` once it exists.
 
 ### 6. Type Overriding with Generics
 

@@ -9,7 +9,10 @@ export interface DefaultSGSyncRequesterConfig {
 }
 
 export const createDefaultSGSyncRequester = (config?: DefaultSGSyncRequesterConfig): SGSyncRequester => {
-  return async <T = any>(options: SGSyncRequesterOptions): Promise<SGSyncResponse<T>> => {
+  // The core request logic, now private to this factory
+  async function doRequest<TResponseData = any, TRequestBody = any, TQueryParams = any>(
+    options: SGSyncRequesterOptions<TRequestBody, TQueryParams>
+  ): Promise<SGSyncResponse<TResponseData>> {
     const { url, method, params, data, authRequire, headers: sgHeaders, ...rest } = options;
 
     let effectiveBaseURL = config?.baseURL || "";
@@ -45,39 +48,45 @@ export const createDefaultSGSyncRequester = (config?: DefaultSGSyncRequesterConf
         }
       } catch (tokenError) {
         console.error(`[DefaultSGSyncRequester] Error getting token for ${method.toUpperCase()} ${url}:`, tokenError);
-        // Potentially rethrow or handle as a failed request if token is critical
       }
     }
 
-    // Environment check: Node.js vs. Browser-like for fetch
     if (typeof window === "undefined" && typeof process !== "undefined" && process.versions && process.versions.node) {
-      // Node.js environment: Use Axios
       try {
-        const response: AxiosResponse<T> = await axios(axiosOptions);
-        // Adapt AxiosResponse to SGSyncResponse
+        const response: AxiosResponse<TResponseData> = await axios(axiosOptions);
         return {
           data: response.data,
           status: response.status,
           statusText: response.statusText,
           headers: response.headers as Record<string, string>,
-          config: options, // Original SGSyncRequesterOptions
+          config: options,
+          originalResponse: response,
         };
       } catch (error: any) {
         if (axios.isAxiosError(error) && error.response) {
           return {
-            data: error.response.data as T,
+            data: error.response.data as TResponseData,
             status: error.response.status,
             statusText: error.response.statusText,
             headers: error.response.headers as Record<string, string>,
             config: options,
+            originalResponse: error.response,
+            isError: true,
           };
         }
-        // For non-Axios errors or errors without a response, rethrow or adapt to SGSyncResponse
         console.error("[DefaultSGSyncRequester] Axios request failed:", error);
-        throw error; // Or construct an SGSyncResponse indicating failure
+        // Instead of rethrowing, return a structured error response
+        return {
+          data: null as TResponseData,
+          status: error.response?.status || 0,
+          statusText: error.message || "Axios request failed without response",
+          headers: (error.response?.headers as Record<string, string>) || {},
+          config: options,
+          isError: true,
+          originalResponse: error.response || error,
+        };
       }
     } else {
-      // Browser-like environment: Use Fetch API
       let fullUrl = url;
       if (effectiveBaseURL && !(url.startsWith("http://") || url.startsWith("https://"))) {
         fullUrl = `${effectiveBaseURL.replace(/\/$/, "")}/${url.replace(/^\//, "")}`;
@@ -94,26 +103,50 @@ export const createDefaultSGSyncRequester = (config?: DefaultSGSyncRequesterConf
         method: method.toUpperCase(),
         headers: axiosOptions.headers as HeadersInit,
         body: data ? JSON.stringify(data) : undefined,
-        signal: axiosOptions.signal as AbortSignal | undefined | null, // Pass AbortSignal if available
+        signal: axiosOptions.signal as AbortSignal | undefined | null,
       };
 
       try {
         const response = await fetch(fullUrl, fetchOptions);
-        const responseData = await response.json().catch(() => ({})); // Handle non-JSON or empty
+        const responseData = await response.json().catch(() => undefined);
+
+        if (!response.ok) {
+          return {
+            data: responseData as TResponseData, // or null if error shape is preferred
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            config: options,
+            isError: true,
+            originalResponse: response,
+          };
+        }
 
         return {
-          data: responseData as T,
+          data: responseData as TResponseData,
           status: response.status,
           statusText: response.statusText,
           headers: Object.fromEntries(response.headers.entries()),
           config: options,
+          originalResponse: response,
         };
       } catch (error: any) {
         console.error("[DefaultSGSyncRequester] Fetch request failed:", error);
-        // Construct a basic error SGSyncResponse or rethrow
-        // This part might need more sophisticated error shaping for fetch
-        throw error;
+        return {
+          data: null as TResponseData,
+          status: 0,
+          statusText: error.message || "Fetch request failed",
+          headers: {},
+          config: options,
+          isError: true,
+          originalResponse: error,
+        };
       }
     }
+  }
+
+  // Return an object that implements the SGSyncRequester interface
+  return {
+    request: doRequest,
   };
 };
