@@ -34,33 +34,31 @@ export async function generateFilesForTag(
 
   // Create top-level banner for functions file
   const functionTopBanner = createTopLevelBanner("functions");
-  let functionsContent = `${functionTopBanner}\n\n${standardFileComment}\n\n`; // Added standard comment
+  let functionsFileParts: string[] = []; // Collect parts to join later
+  functionsFileParts.push(`${functionTopBanner}\n\n${standardFileComment}\n\n`);
+  functionsFileParts.push(`// Imports for the requester mechanism\n`);
+  functionsFileParts.push(
+    `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`
+  );
 
-  functionsContent += `// Imports for the requester mechanism\n`;
-  functionsContent += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
   const tagImportName = toTsIdentifier(tagName) + "Types";
-  // Use the sanitized tag name for the file path
   const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
-  // This will be added conditionally later
 
-  const generatedTypeNames = new Set<string>(); // Track generated types for this tag
-  const functionFactoryNames: string[] = []; // Initialize
-  const hookFactoryNames: string[] = []; // Initialize
+  let anyFunctionNeedsTypesImport = false;
+  let anyHookNeedsTypesImport = false;
+
+  const generatedTypeNames = new Set<string>();
+  const functionFactoryNames: string[] = [];
+  const hookFactoryNames: string[] = [];
 
   if (packageConfig.verbose) console.log(`  Processing ${operations.length} operations for tag: ${tagName}`);
 
-  // Initialize hooksContent
-  let hooksContent = "";
-  let hooksGenerated = false; // Track if any hooks are added for this tag
-
-  // --- Imports and header for hooksContent will be added AFTER the loop if hooksGenerated is true ---
+  let hooksContentParts: string[] = [];
+  let hooksGenerated = false;
 
   for (const opInfo of operations) {
     const { operation, path, method } = opInfo;
-
     const operationId = operation.operationId;
-
-    // Apply stripPathPrefix if configured
     let processedPath = path;
     if (packageConfig.stripPathPrefix && processedPath.startsWith(packageConfig.stripPathPrefix)) {
       processedPath = processedPath.substring(packageConfig.stripPathPrefix.length);
@@ -69,10 +67,7 @@ export async function generateFilesForTag(
       }
     }
 
-    // BaseName for types (uses operationId or path)
     const baseNameForTypes = operationId ? toPascalCase(operationId) : getPathBasedBaseName(path);
-
-    // Generate function, type, and hook base names from config templates
     const methodPascal = toPascalCase(method);
     const endpointBaseName = getPathBasedBaseName(processedPath);
 
@@ -91,9 +86,8 @@ export async function generateFilesForTag(
     const summary = operation.summary || "No Description Provided";
     const operationGroupBanner = createOperationGroupBanner(operation.summary, method, processedPath);
 
-    typesContent += `\n\n${operationGroupBanner}\n`; // Add banner before types for this operation
+    typesContent += `\n\n${operationGroupBanner}\n`;
 
-    // --- Generate Types for the current operation using the helper ---
     const {
       typesString: operationTypesString,
       requestBodyTypeName: actualRequestBodyTypeName,
@@ -103,70 +97,69 @@ export async function generateFilesForTag(
       parametersTypeFailed,
       responseTypeFailed,
       primaryResponseTypeGenerated,
-    } = await _generateOperationTypes(
-      opInfo,
-      typeBaseNameForOperation, // Use the more specific name for type generation
-      tagName, // For logging inside the helper
-      generatedTypeNames // Pass the set to track unique names
-    );
+    } = await _generateOperationTypes(opInfo, typeBaseNameForOperation, tagName, generatedTypeNames);
     typesContent += operationTypesString;
-    // No need to re-initialize actualRequestBodyTypeName, etc. as they are returned by the helper.
 
-    // Determine authRequirement (remains here as it's straightforward)
+    // Check if this operation necessitates importing from ./types
+    const needsTypesForThisOperation =
+      (primaryResponseTypeName && primaryResponseTypeName !== "void") ||
+      actualRequestBodyTypeName ||
+      actualParametersTypeName;
+
+    if (needsTypesForThisOperation) {
+      anyFunctionNeedsTypesImport = true;
+      if (reactQueryEnabled && packageConfig.generateHooks) {
+        anyHookNeedsTypesImport = true;
+      }
+    }
+
     const authRequire = !!(operation.security && operation.security.length > 0);
-
-    // --- Define variables needed by both function factory and hook generation ---
     const pathParams =
       (operation.parameters?.filter(
         (p) => (p as OpenAPIV3.ParameterObject).in === "path"
       ) as OpenAPIV3.ParameterObject[]) || [];
 
-    // --- Call the helper to generate the function factory string ---
     const currentFunctionFactoryString = _generateFunctionFactory(
       opInfo,
       functionName,
       summary,
-      operationGroupBanner, // This banner is now generated before types and function factory
+      operationGroupBanner,
       tagImportName,
       processedPath,
       authRequire,
-      actualRequestBodyTypeName, // From _generateOperationTypes
-      actualParametersTypeName, // From _generateOperationTypes
-      primaryResponseTypeName, // From _generateOperationTypes
-      requestBodyFailed, // From _generateOperationTypes
-      parametersTypeFailed, // From _generateOperationTypes
-      responseTypeFailed, // From _generateOperationTypes
-      primaryResponseTypeGenerated, // From _generateOperationTypes
+      actualRequestBodyTypeName,
+      actualParametersTypeName,
+      primaryResponseTypeName,
+      requestBodyFailed,
+      parametersTypeFailed,
+      responseTypeFailed,
+      primaryResponseTypeGenerated,
       packageConfig
     );
-    functionsContent += currentFunctionFactoryString;
+    functionsFileParts.push(currentFunctionFactoryString);
     functionFactoryNames.push(functionName);
 
-    // --- Generate React Query Hook (if enabled) by calling the helper ---
     if (reactQueryEnabled && packageConfig.generateHooks) {
-      hooksGenerated = true; // Mark that at least one hook is attempted for this tag
-
-      const hookFactoryName = `create${hookBaseName}Hook`; // hookBaseName is defined earlier
-
+      hooksGenerated = true;
+      const hookFactoryName = `create${hookBaseName}Hook`;
       const currentHookFactoryString = _generateHookFactory(
         opInfo,
         hookFactoryName,
-        functionName, // This is the `correspondingFunctionFactoryName`
+        functionName,
         summary,
-        operationGroupBanner, // Pass the same banner
+        operationGroupBanner,
         tagImportName,
-        sanitizedTagName, // Defined at the top of generateFilesForTag
-        endpointBaseName, // Defined earlier based on processedPath
+        sanitizedTagName,
+        endpointBaseName,
         processedPath,
-        actualRequestBodyTypeName, // From _generateOperationTypes
-        actualParametersTypeName, // From _generateOperationTypes
-        primaryResponseTypeName, // From _generateOperationTypes
-        pathParams, // Defined earlier in the loop
+        actualRequestBodyTypeName,
+        actualParametersTypeName,
+        primaryResponseTypeName,
+        pathParams,
         packageConfig
       );
-
       if (currentHookFactoryString && currentHookFactoryString.trim() !== "") {
-        hooksContent += currentHookFactoryString;
+        hooksContentParts.push(currentHookFactoryString);
         hookFactoryNames.push(hookFactoryName);
       } else {
         if (packageConfig.verbose) {
@@ -174,58 +167,21 @@ export async function generateFilesForTag(
         }
       }
     }
-  } // End loop through operations
-
-  // Conditionally add import for './types' to functionsContent
-  if (generatedTypeNames.size > 0) {
-    // The main `functionsContent` already has the function factory strings accumulated from the loop.
-    // We just need to ensure the imports are at the top.
-    // Let's rebuild functionsContent to ensure correct order of imports and then content.
-    // The current `functionsContent` starts with banners and initial `sg-schema-sync/requester-types` import,
-    // then `tagImportName` types import, then all the actual function factories.
-    // The helpers _generateFunctionFactory and _generateHookFactory add their own operationGroupBanners.
-    // The `functionsContent` at this point should look like:
-    // Banner + Standard Comment
-    // import { SGSyncRequester... } from 'sg-schema-sync/requester-types';
-    // import * as ${tagImportName} from './types';
-    // OperationGroupBanner for op1
-    // export function createOp1 ...
-    // OperationGroupBanner for op2
-    // export function createOp2 ...
-    // This structure is already correct because `functionsContent` is built sequentially:
-    // 1. Top banner + standard comment.
-    // 2. Requester types import.
-    // 3. `* as ${tagImportName} from './types'` import (this was added early).
-    // 4. Then, in the loop, each call to _generateFunctionFactory returns a string starting with
-    //    an operationGroupBanner, which is then appended.
-    // So, no specific rebuilding of functionsContent is needed here if the `import * as ${tagImportName}`
-    // was correctly added *before* the loop started appending function factory strings.
-    // Reviewing the top of the file for `functionsContent` initial build:
-    // functionsContent += `import * as ${tagImportName} from './types';\\n\\n`; IS added before the loop.
-    // Therefore, this entire if block might be redundant if the only goal was to add this import,
-    // as it's already done.
-    // However, the original code had a more complex reconstruction here, let's simplify but ensure imports are correctly ordered if there was a subtle reason.
-    // The current structure of `functionsContent` is already:
-    // 1. functionTopBanner + standardFileComment
-    // 2. SGSyncRequester import
-    // 3. `tagImportName` import (e.g., `import * as UsersTypes from './types';`)
-    // 4. Concatenated strings from `_generateFunctionFactory` (each starting with an op banner)
-    // This order is correct. The `if (generatedTypeNames.size > 0)` was likely a guard
-    // for the `import * as ${tagImportName} from './types';` line.
-    // Since that import is now added unconditionally earlier:
-    // `functionsContent += \`import * as ${tagImportName} from './types';\\n\\n\`;` (line 40 approx)
-    // this whole if block for rebuilding `functionsContent` is indeed no longer necessary.
-    // The check `generatedTypeNames.size > 0` is still useful for the return value of `generateFilesForTag`
-    // (`hasGeneratedTypes`), but not for rebuilding `functionsContent` here.
   }
 
-  // --- Add Imports and Header to hooksContent if needed ---
+  let functionsContent = "";
+  if (anyFunctionNeedsTypesImport) {
+    functionsFileParts.splice(3, 0, `import * as ${tagImportName} from './types';\n\n`); // Insert after SGSyncRequester import
+  }
+  functionsContent = functionsFileParts.join("");
+
+  let hooksContent = "";
   if (reactQueryEnabled && hooksGenerated) {
     const hookTopBanner = createTopLevelBanner("hooks");
     let finalHooksImports = `// Imports for the requester mechanism and TanStack Query\n`;
     finalHooksImports += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
-    if (generatedTypeNames.size > 0) {
-      // Conditional import for types
+    if (anyHookNeedsTypesImport) {
+      // Use the new flag here
       finalHooksImports += `import * as ${tagImportName} from './types';\n`;
     }
 
@@ -236,16 +192,15 @@ export async function generateFilesForTag(
       let factoryImportStatements = "  " + functionFactoryNames.join(",\n  ");
       finalHooksImports += `import {\n${factoryImportStatements}\n} from './functions';\n`;
     }
-    finalHooksImports += `\n`; // Add a newline after imports
+    finalHooksImports += `\n`;
 
-    hooksContent = `${hookTopBanner}\n\n${standardFileComment}\n\n${finalHooksImports}${hooksContent}`;
+    hooksContent = `${hookTopBanner}\n\n${standardFileComment}\n\n${finalHooksImports}${hooksContentParts.join("")}`;
   } else if (reactQueryEnabled && !hooksGenerated) {
     const hookTopBanner = createTopLevelBanner("hooks");
     hooksContent = `${hookTopBanner}\n\n${standardFileComment}\n\n// React Query is enabled, but no hooks were generated for this tag.\n`;
     if (packageConfig.verbose)
       console.log(`  [RQ Summary] React Query enabled, but no hook factories were generated for tag: ${tagName}.`);
   }
-  // If !reactQueryEnabled, hooksContent remains "" which is fine.
 
   return {
     typesContent,
@@ -253,6 +208,6 @@ export async function generateFilesForTag(
     hooksContent,
     functionFactoryNames,
     hookFactoryNames,
-    hasGeneratedTypes: generatedTypeNames.size > 0,
+    hasGeneratedTypes: generatedTypeNames.size > 0, // This remains the indicator for whether any types were generated *at all*
   };
 }

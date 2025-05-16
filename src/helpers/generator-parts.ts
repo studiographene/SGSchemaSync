@@ -319,18 +319,6 @@ export function _generateHookFactory(
   const defaultRequestBodyType = actualRequestBodyTypeName ? `${tagImportName}.${actualRequestBodyTypeName}` : "never";
   const defaultQueryParamsType = actualParametersTypeName ? `${tagImportName}.${actualParametersTypeName}` : "never";
 
-  // Determine if the types import is needed for this specific hook factory
-  let needsTypesImport = false;
-  if (
-    (primaryResponseTypeName && primaryResponseTypeName !== "void") ||
-    actualRequestBodyTypeName ||
-    actualParametersTypeName
-  ) {
-    // This check is based on whether any of the core schema-derived types are used with tagImportName
-    needsTypesImport = true;
-  }
-  const typesImportStatement = needsTypesImport ? `import * as ${tagImportName} from './types';\n` : "";
-
   // React Query specific types
   const defaultQueryTData = defaultResponseType;
   const defaultMutationTData = defaultResponseType;
@@ -389,7 +377,7 @@ export function _generateHookFactory(
     }
 
     mutationHookParams.push(
-      `mutationOptions?: Omit<UseMutationOptions<TData, TError, TVariables, unknown>, \'mutationFn\'>`
+      `mutationOptions?: Omit<UseMutationOptions<TData, TError, TVariables, unknown>, 'mutationFn'>`
     );
     optionsAndHookParamsString = mutationHookParams.length > 0 ? `\n    ${mutationHookParams.join(",\n    ")}\n  ` : "";
 
@@ -472,7 +460,7 @@ export function _generateHookFactory(
 
   const genericString = hookGenerics.length > 0 ? `<\n    ${hookGenerics.join(",\n    ")}\n  >` : "";
 
-  return `${typesImportStatement}${operationGroupBanner}\nexport function ${hookFactoryName}(requester: SGSyncRequester) {\n  /**\n${indentedSummary}\n   */\n  return ${genericString}(${optionsAndHookParamsString}) => {${reactQueryHookBlock}\n  };\n}\n`;
+  return `${operationGroupBanner}\nexport function ${hookFactoryName}(requester: SGSyncRequester) {\n  /**\n${indentedSummary}\n   */\n  return ${genericString}(${optionsAndHookParamsString}) => {${reactQueryHookBlock}\n  };\n}\n`;
 }
 
 // Placeholder for SGSyncRequesterOptions and SGSyncRequester if not globally available in this context
