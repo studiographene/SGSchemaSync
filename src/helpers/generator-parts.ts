@@ -446,7 +446,7 @@ export function _generateHookFactory(
     hookGenerics.push(`TQueryData = ${defaultQueryTData}`);
     hookGenerics.push(`TError = Error`);
     if (actualParametersTypeName) {
-      hookGenerics.push(`TQueryParams = ${defaultQueryParamsType}`);
+      hookGenerics.push(`TQueryParams extends ${defaultQueryParamsType} = ${defaultQueryParamsType}`);
     }
 
     // 1. Construct the parts for the QueryKey's TYPE (as a string literal tuple)
