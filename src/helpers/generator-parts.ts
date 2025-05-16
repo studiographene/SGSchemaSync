@@ -257,7 +257,7 @@ export function _generateFunctionFactory(
     .map((line) => `   * ${line}`)
     .join("\n");
 
-  return `${typesImportStatement}${warningBlock}${operationGroupBanner}
+  return `${warningBlock}${operationGroupBanner}
 export function ${functionFactoryName}(requester: SGSyncRequester) {
   /**
 ${indentedSummary}
@@ -362,18 +362,20 @@ export function _generateHookFactory(
     hookGenerics.push(`TData = ${defaultMutationTData}`);
     hookGenerics.push(`TError = Error`);
     hookGenerics.push(`TVariables = ${defaultMutationTVariables}`);
-    if (actualParametersTypeName && !actualRequestBodyTypeName) {
-      // If mutation uses query params and NOT a request body, TQueryParams are the TVariables.
-    } else if (actualParametersTypeName) {
+    // If a mutation has both request body and query params, TQueryParams is a separate generic for the hook.
+    // TVariables will map to the request body by default in this scenario.
+    if (actualRequestBodyTypeName && actualParametersTypeName) {
       hookGenerics.push(`TQueryParams = ${defaultQueryParamsType}`);
     }
 
-    const mutationHookParams: string[] = [];
+    const mutationHookParams: string[] = []; // Parameters for the hook factory itself
     if (pathParamsForFactorySignatureString) {
       mutationHookParams.push(pathParamsForFactorySignatureString);
     }
-    if (actualParametersTypeName && actualRequestBodyTypeName) {
-      mutationHookParams.push(`queryParams?: TQueryParams`);
+    // If the operation takes both body and query, the hook factory needs to accept queryParams separately
+    // because TVariables will be for the request body.
+    if (actualRequestBodyTypeName && actualParametersTypeName) {
+      mutationHookParams.push(`queryParams: TQueryParams`);
     }
 
     mutationHookParams.push(
@@ -381,39 +383,48 @@ export function _generateHookFactory(
     );
     optionsAndHookParamsString = mutationHookParams.length > 0 ? `\n    ${mutationHookParams.join(",\n    ")}\n  ` : "";
 
-    const mutationQueryKeyParts = [...baseQueryKeyParts, "\'mutation\'"];
-    const queryKeyDefinition = `const queryKey = [${mutationQueryKeyParts.join(", ")}] as const;`;
+    // const mutationQueryKeyParts = [...baseQueryKeyParts, "'mutation'"]; // Not used directly for mutationFn call
+    // const queryKeyDefinition = `const queryKey = [${mutationQueryKeyParts.join(", ")}] as const;`; // Not used for mutationFn
 
-    const mutationFnParams: string[] = [];
-    if (actualRequestBodyTypeName && actualParametersTypeName) {
-      sgFunctionCallArgs = [];
-      mutationFnParams.push(`variables: TVariables`);
-      sgFunctionCallArgs.push(...pathParamArgsForSgFunction);
-      sgFunctionCallArgs.push(`variables`);
-      if (actualParametersTypeName) {
-      }
-    } else if (actualRequestBodyTypeName) {
-      mutationFnParams.push(`variables: TVariables`);
-      sgFunctionCallArgs.push(...pathParamArgsForSgFunction);
-      sgFunctionCallArgs.push(`variables`);
-    } else if (actualParametersTypeName) {
-      mutationFnParams.push(`variables: TVariables`);
-      sgFunctionCallArgs.push(...pathParamArgsForSgFunction);
-      sgFunctionCallArgs.push(`variables`);
-    } else {
-      sgFunctionCallArgs.push(...pathParamArgsForSgFunction);
-      if (defaultMutationTVariables !== "void") {
-        mutationFnParams.push(`variables: TVariables`);
-        sgFunctionCallArgs.push(`variables`);
-      }
+    // Arguments for the actual mutationFn: (variables: TVariables) => { ... }
+    const mutationFnExecutionParams: string[] = [];
+    if (defaultMutationTVariables !== "void") {
+      mutationFnExecutionParams.push(`variables: TVariables`);
     }
-    const finalSgFunctionCallArgs = sgFunctionCallArgs.join(", ");
+
+    // Arguments to pass to the underlying sgFunction from within mutationFn
+    sgFunctionCallArgs = [...pathParamArgsForSgFunction]; // Start with path parameters
+
+    if (actualRequestBodyTypeName) {
+      // If a request body is expected, 'variables' (from mutationFn) is used for it.
+      sgFunctionCallArgs.push("variables");
+    } else {
+      // No request body for sgFunction, pass undefined.
+      sgFunctionCallArgs.push("undefined");
+    }
+
+    if (actualParametersTypeName) {
+      // If query parameters are expected:
+      if (actualRequestBodyTypeName) {
+        // If there was also a request body, 'queryParams' comes from the hook factory's closure.
+        sgFunctionCallArgs.push("queryParams");
+      } else {
+        // If no request body, 'variables' (from mutationFn) is used for query parameters.
+        sgFunctionCallArgs.push("variables");
+      }
+    } else {
+      // No query parameters for sgFunction, pass undefined.
+      sgFunctionCallArgs.push("undefined");
+    }
+    // callSpecificOptions for sgFunction is not explicitly passed from here; it will use its default.
+
+    const finalSgFunctionCallArgsString = sgFunctionCallArgs.join(", ");
 
     reactQueryHookBlock = `
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
     return useMutation<TData, TError, TVariables>({ 
-      mutationFn: async (${mutationFnParams.join(", ")}) => {
-        return sgFunction(${finalSgFunctionCallArgs});
+      mutationFn: async (${mutationFnExecutionParams.join(", ")}) => {
+        return sgFunction(${finalSgFunctionCallArgsString});
       },
       ...mutationOptions,
     });`;
@@ -434,7 +445,7 @@ export function _generateHookFactory(
       sgFunctionCallArgs.push(`queryParams`);
     }
     queryHookParams.push(
-      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, readonly unknown[]>, 'queryKey' | 'queryFn'>`
+      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, typeof queryKey>, 'queryKey' | 'queryFn'>`
     );
     optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
 
