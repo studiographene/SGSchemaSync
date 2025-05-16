@@ -213,7 +213,7 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
 ### 2. `functions.ts` (per tag - Core Factories)
 *   Exports **factory functions** for each API operation, e.g., `export const createGetUserByIdFunction = (requester: SGSyncRequester) => { /* returns async func */ };`
 *   Each factory takes an `SGSyncRequester` argument.
-*   The returned async function (e.g., `getUserById`) takes path parameters, data, query params, and `callSpecificOptions`. It constructs `SGSyncRequesterOptions` (including `authRequired: boolean` derived from your OpenAPI spec's `security` definitions) and calls the provided `requester`.
+*   The returned async function (e.g., `getUserById`) is **generic**, allowing for type overrides (see "Type Overriding with Generics" below). It takes path parameters, data (if applicable), query params (if applicable), and `callSpecificOptions`. It constructs `SGSyncRequesterOptions` (including `authRequired: boolean` derived from your OpenAPI spec's `security` definitions) and calls the provided `requester`.
 *   The returned function's promise resolves with an `SGSyncResponse<ResponseType>`.
 *   **`SGSyncRequester`, `SGSyncRequesterOptions`, `SGSyncResponse`**: These crucial types define the contract for the requester mechanism. They are exported by the `sg-schema-sync` package (or available locally if you copy them) for you to implement a custom requester or understand the default one.
 
@@ -221,12 +221,12 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
 *(Generated only if `generateHooks: true`)*
 *   Exports **factory functions** for TanStack Query hooks, e.g., `export const createUseGetUserByIdHook = (requester: SGSyncRequester) => { /* returns hook */ };`
 *   Each factory takes an `SGSyncRequester`.
-*   The returned hook internally uses the corresponding function factory (e.g., `createGetUserByIdFunction`) to get an API call function, then uses it in `queryFn` or `mutationFn`.
+*   The returned hook is **generic** (see "Type Overriding with Generics" below). It internally uses the corresponding function factory (e.g., `createGetUserByIdFunction`) to get an API call function, then uses it in `queryFn` or `mutationFn`.
 *   The hook typically extracts the `.data` property from the `SGSyncResponse` for convenience in `useQuery` or provides the full `SGSyncResponse` for mutations.
 
 ### 4. `<tag>/client.ts` (Per-Tag Orchestrator Module)
 *   This file is **auto-generated and always overwritten on each run**. Do not edit it directly. Its basename is configurable via `generatedClientModuleBasename` (default: `client`).
-*   **Purpose:** To provide ready-to-use API functions and hooks, instantiated with the chosen requester.
+*   **Purpose:** To provide ready-to-use API functions and hooks, instantiated with the chosen requester. These instantiated functions and hooks are **generic**, inheriting their generic parameters from the factories.
 *   **Imports:**
     *   All factory functions from `./functions.ts`.
     *   All factory hooks (if generated) from `./hooks.ts`.
@@ -239,7 +239,7 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
             *   Imports your custom requester function from the module specified in `customRequesterConfig.filePath` (using `customRequesterConfig.exportName`).
             *   `const requester = yourImportedCustomRequester;`
 *   **Instantiates Factories:** It calls all imported factory functions/hooks with the `requester` instance.
-*   **Exports:** Exports the concrete, ready-to-use API functions (e.g., `export const GetUserById = createGetUserByIdFunction(requester);`) and hooks (e.g., `export const useGetUserById = createUseGetUserByIdHook(requester);`).
+*   **Exports:** Exports the concrete, ready-to-use API functions (e.g., `export const GetUserById = createGetUserByIdFunction(requester);`) and hooks (e.g., `export const useGetUserById = createUseGetUserByIdHook(requester);`). These exported items are generic, allowing for type overrides.
 
 ### 5. `schema-sync-requester.ts` (Custom Requester File - User Owned)
 *(Relevant only if `useDefaultRequester: false`. Default path: `<outputDir>/schema-sync-requester.ts`, configurable via `customRequesterConfig.filePath`)*
@@ -248,57 +248,169 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
     // Example scaffold content (schema-sync-requester.ts)
     import type { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types'; // Or your local path
 
-    export const customSGSyncRequester: SGSyncRequester = async <TData = any>(
-      options: SGSyncRequesterOptions
-    ): Promise<SGSyncResponse<TData>> => {
-      console.log('Custom SGSyncRequester called with options:', options);
-
-      // TODO: Implement your actual HTTP request logic here.
-      // This could involve using axios, fetch, or your project's existing API service.
-
-      // Example structure:
-      // const { method, url, data, params, headers, responseType, authRequired, context } = options;
-      // if (authRequired) {
-      //   const token = await context?.getToken?.(); // Assuming getToken is passed in context if needed by custom logic
-      //   // Add authorization header
+    // TODO: Implement your custom requester logic here.
+    // This function needs to make the actual HTTP request based on the options
+    // and return a promise that resolves with an SGSyncResponse.
+    export const customSGSyncRequester: SGSyncRequester = async (options) => {
+      // Example: using fetch
+      // const { url, method, data, params, headers, authRequire, timeout } = options;
+      //
+      // let fullUrl = url;
+      // if (params) {
+      //   const queryString = new URLSearchParams(params).toString();
+      //   if (queryString) {
+      //     fullUrl += `?${queryString}`;
+      //   }
       // }
       //
-      // try {
-      //   // const response = await myHttpLib({ method, url, data, params, headers });
-      //   // return {
-      //   //   data: response.data as TData,
-      //   //   status: response.status,
-      //   //   statusText: response.statusText,
-      //   //   headers: response.headers,
-      //   //   originalResponse: response, // Optional: include the original driver's response
-      //   // };
-      // } catch (error) {
-      //   // Handle error, potentially re-throwing or returning a structured error response
-      //   // For example, if using axios and error is AxiosError:
-      //   // if (axios.isAxiosError(error) && error.response) {
-      //   //   return {
-      //   //     data: error.response.data as TData, // Or some error type
-      //   //     status: error.response.status,
-      //   //     statusText: error.response.statusText,
-      //   //     headers: error.response.headers,
-      //   //     originalResponse: error.response,
-      //   //     isError: true,
-      //   //   };
-      //   // }
-      //   // throw error; // Or return a generic error SGSyncResponse
+      // const requestInit: RequestInit = {
+      //   method: method.toUpperCase(),
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //     ...headers,
+      //   },
+      // };
+      //
+      // if (data) {
+      //   requestInit.body = JSON.stringify(data);
       // }
-
-      // Placeholder implementation:
-      return Promise.reject(new Error(`'${options.method} ${options.url}' not implemented in custom requester.`));
+      //
+      // // Handle authRequire - you'll need a way to get the token
+      // // if (authRequire) {
+      // //   const token = await getToken(); // Implement or import your getToken function
+      // //   if (token) {
+      // //     (requestInit.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+      // //   }
+      // // }
+      //
+      // try {
+      //   const httpResponse = await fetch(fullUrl, requestInit);
+      //   const responseData = httpResponse.status !== 204 ? await httpResponse.json() : undefined;
+      //
+      //   if (!httpResponse.ok) {
+      //     // Adapt this to your error handling strategy
+      //     return Promise.reject({
+      //       isAxiosError: false, // Or true if using Axios and adapting its error structure
+      //       response: {
+      //         data: responseData,
+      //         status: httpResponse.status,
+      //         statusText: httpResponse.statusText,
+      //         headers: Object.fromEntries(httpResponse.headers.entries()),
+      //       },
+      //       message: `HTTP error ${httpResponse.status}`,
+      //       name: 'HttpError',
+      //     });
+      //   }
+      //
+      //   return {
+      //     data: responseData,
+      //     status: httpResponse.status,
+      //     statusText: httpResponse.statusText,
+      //     headers: Object.fromEntries(httpResponse.headers.entries()),
+      //     config: options, // Pass through the original options
+      //   };
+      // } catch (error) {
+      //   // Adapt this to your error handling strategy
+      //   console.error('Request failed:', error);
+      //   return Promise.reject(error);
+      // }
+      throw new Error('Custom requester not implemented');
     };
     ```
-*   **User Responsibility:** You need to implement the logic within this function to make HTTP requests using your preferred library (Axios, Fetch, etc.) or integrate with your existing API client/service layer.
-*   This file is **user-owned**. Once scaffolded (or created manually), it will **not be overwritten** by `sg-schema-sync`.
-*   The export name here should match `customRequesterConfig.exportName`.
+    This scaffold provides a basic structure. You need to implement the actual HTTP request logic (e.g., using `fetch`, `axios`, or your project's HTTP client). It is **your responsibility** to ensure it correctly handles `SGSyncRequesterOptions` and returns an `SGSyncResponse`. This file is user-owned and will **not** be overwritten by the generator once created.
 
-### 6. `<tag>/index.ts` (Barrel Exports per Tag)
-*   Always exports `* from './types';`.
-*   Always exports `* from './${generatedClientModuleBasename}';` (e.g., `* from './client';`). This makes all instantiated API functions and hooks available via a single import from the tag directory.
+### 6. Type Overriding with Generics
+
+The functions generated in `<tag>/client.ts` (originating from factories in `functions.ts`) and the hooks (from `hooks.ts` via `client.ts`) are generic. This allows you to override the default types for responses and request bodies on a case-by-case basis directly at the call site.
+
+**For API Functions:**
+The generic signature typically looks like:
+`async <TResponse = DefaultResponseType, TRequestBody = DefaultRequestBodyType, TQueryParams = DefaultQueryParamsType>(...)`
+
+*   `TResponse`: Overrides the expected response data type.
+*   `TRequestBody`: Overrides the request body data type.
+*   `TQueryParams`: Overrides the query parameters type (less commonly overridden as these are usually well-defined by the schema).
+
+**Example:**
+```typescript
+import { users } from './api/schema-sync'; // Assuming 'users' is a tag
+
+interface MyCustomUserResponse {
+  id: string;
+  customFullName: string;
+  emailAddress: string;
+}
+
+interface MyCustomCreateUserInput {
+  firstName: string;
+  lastName: string;
+  emailAddress: string;
+  age?: number;
+}
+
+async function fetchUsers() {
+  // Default types
+  const user = await users.getUserById({ userId: '123' });
+  // user.data will be of type UsersTypes.GetUserById_Response (or similar)
+
+  // Override response type
+  const customUser = await users.getUserById<MyCustomUserResponse>({ userId: '456' });
+  // customUser.data will be of type MyCustomUserResponse
+
+  // Override request body and response type for a POST/PUT operation
+  const createdUser = await users.createUser<MyCustomUserResponse, MyCustomCreateUserInput>({
+    data: { firstName: 'Jane', lastName: 'Doe', emailAddress: 'jane@example.com' }
+  });
+  // createdUser.data will be MyCustomUserResponse
+  // The 'data' payload must conform to MyCustomCreateUserInput
+}
+```
+
+**For React Query Hooks:**
+The generic signatures are similar, adapting to `useQuery` and `useMutation` patterns.
+
+*   `useQuery`: `useQuery<TQueryData = DefaultQueryDataType, TError = Error, TQueryParams = DefaultQueryParamsType, ...>`
+    *   `TQueryData`: Overrides the data type returned by the query.
+*   `useMutation`: `useMutation<TData = DefaultDataType, TError = Error, TVariables = DefaultVariablesType, ...>`
+    *   `TData`: Overrides the data type returned upon successful mutation.
+    *   `TVariables`: Overrides the type of the variables passed to the mutation function (often the request body).
+
+**Example:**
+```typescript
+import { useGetUserById, useCreateUser } from './api/schema-sync/users'; // Assuming direct import from client module
+
+interface MyCustomUser {
+  id: string;
+  profileName: string;
+}
+
+interface MyMutationVariables {
+  name: string;
+  job: string;
+}
+
+function UserProfile({ userId }: { userId: string }) {
+  // Default types
+  const { data: defaultUser } = useGetUserById({ userId });
+  // defaultUser is UsersTypes.GetUserById_Response
+
+  // Override response type for useQuery
+  const { data: customUser } = useGetUserById<MyCustomUser>({ userId });
+  // customUser is MyCustomUser
+
+  // Override response and variables types for useMutation
+  const mutation = useCreateUser<MyCustomUser, MyMutationVariables>();
+
+  const handleCreate = () => {
+    mutation.mutate({ name: 'John Rider', job: 'Developer' });
+    // mutation.data would be MyCustomUser upon success
+  };
+  // ...
+}
+```
+Path parameters and query parameter structures themselves are generally not made generic at the call site, as they are directly derived from the OpenAPI path and parameter definitions. The `TQueryParams` generic for functions and hooks allows overriding the entire query parameters object type if needed, but individual parameter types within that object are still based on the schema.
+
+Default types for `TResponse`, `TRequestBody`, `TQueryData`, `TVariables`, etc., are always derived from the types generated in `<tag>/types.ts` based on your OpenAPI schema.
 
 ## Example Usage Scenarios
 
