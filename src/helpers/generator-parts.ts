@@ -500,12 +500,14 @@ export function _generateHookFactory(
     reactQueryHookBlock = `
     ${queryKeyDefinition} 
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
-    return useQuery<TQueryData, TError, TQueryData, typeof queryKey>({
-      queryKey,
-      queryFn: async () => {
-        return sgFunction(${finalSgFunctionCallArgsString_Query});
-      },
-      ...queryOptions,
+    const queryFn = async () => { // Define queryFn separately for clarity
+      return sgFunction(${finalSgFunctionCallArgsString_Query});
+    };
+
+    return useQuery<TQueryData, TError, TQueryData, ${specificQueryKeyTypeName}>({ // Use specificQueryKeyTypeName here
+      ...queryOptions, // Spread user-provided options first
+      queryKey: queryKey, // Then override with the definitive queryKey
+      queryFn: queryFn,   // And the definitive queryFn
     });`;
   }
 
