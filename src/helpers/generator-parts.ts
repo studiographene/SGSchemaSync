@@ -467,27 +467,27 @@ export function _generateHookFactory(
     // This type alias will be part of the string output of _generateHookFactory
     queryKeyTypeAliasDefinition = `type ${specificQueryKeyTypeName} = ${queryKeyTypeString};\n`;
 
-    // 3. Define queryHookParams using this type alias
-    const queryHookParams: string[] = [];
-    if (pathParamsForFactorySignatureString) {
-      queryHookParams.push(pathParamsForFactorySignatureString);
-    }
-    if (actualParametersTypeName) {
-      queryHookParams.push(`queryParams: TQueryParams`);
-      // sgFunctionCallArgs.push(`queryParams`); // This is already handled when constructing sgFunctionCallArgs before isMutation check
-    }
-    queryHookParams.push(
-      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, ${specificQueryKeyTypeName}>, 'queryKey' | 'queryFn'>`
-    );
-    optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
-
-    // 4. Define the runtime queryKey variable as before
+    // 4. Define the runtime queryKey variable BEFORE it's used in queryOptions type
     const runtimeQueryKeyParts = [...baseQueryKeyParts, ...pathParamArgsForSgFunction];
     if (actualParametersTypeName) {
       // queryParams is a required parameter for the hook if actualParametersTypeName is true
       runtimeQueryKeyParts.push(`queryParams`);
     }
     const queryKeyDefinition = `const queryKey = [${runtimeQueryKeyParts.join(", ")}] as const;`;
+
+    // 3. Define queryHookParams using typeof queryKey for queryOptions
+    const queryHookParams: string[] = [];
+    if (pathParamsForFactorySignatureString) {
+      queryHookParams.push(pathParamsForFactorySignatureString);
+    }
+    if (actualParametersTypeName) {
+      queryHookParams.push(`queryParams: TQueryParams`);
+    }
+    // Use typeof queryKey directly in the Omit for queryOptions
+    queryHookParams.push(
+      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, typeof queryKey>, 'queryKey' | 'queryFn'>`
+    );
+    optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
 
     // Construct arguments for the sgFunction call within the query
     let currentSgFunctionCallArgs_Query = [...pathParamArgsForSgFunction];
