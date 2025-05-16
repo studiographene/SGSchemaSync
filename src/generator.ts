@@ -101,10 +101,14 @@ export async function generateFilesForTag(
     typesContent += operationTypesString;
 
     // Check if this operation necessitates importing from ./types
+    // A prefixed type import is needed if any default type will actually use the prefix.
+    const usesPrefixedResponseType =
+      primaryResponseTypeName && primaryResponseTypeName !== "void" && primaryResponseTypeGenerated;
+    const usesPrefixedRequestBodyType = actualRequestBodyTypeName && !requestBodyFailed;
+    const usesPrefixedParametersType = actualParametersTypeName && !parametersTypeFailed;
+
     const needsTypesForThisOperation =
-      (primaryResponseTypeName && primaryResponseTypeName !== "void") ||
-      actualRequestBodyTypeName ||
-      actualParametersTypeName;
+      usesPrefixedResponseType || usesPrefixedRequestBodyType || usesPrefixedParametersType;
 
     if (needsTypesForThisOperation) {
       anyFunctionNeedsTypesImport = true;
