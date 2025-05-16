@@ -2,7 +2,7 @@ import { OpenAPIV3 } from "openapi-types";
 import { compile, JSONSchema } from "json-schema-to-typescript"; // Added for _generateOperationTypes
 import { OperationInfo } from "../index"; // Adjust path as necessary
 import { ResolvedPackageConfig } from "../config"; // Adjust path as necessary
-import { toTsIdentifier } from "./generator-helpers"; // Assuming it's in the same dir or adjust
+import { toTsIdentifier, toPascalCase } from "./generator-helpers"; // Assuming it's in the same dir or adjust
 
 export interface OperationTypeNames {
   requestBodyTypeName: string | null;
@@ -311,6 +311,8 @@ export function _generateHookFactory(
   const { method } = opInfo;
   const isMutation = ["POST", "PUT", "DELETE", "PATCH"].includes(method.toUpperCase());
 
+  let queryKeyTypeAliasDefinition = ""; // Initialize here
+
   // Default Type Names for Generics
   const defaultResponseType =
     primaryResponseTypeName && primaryResponseTypeName !== "void"
@@ -431,32 +433,52 @@ export function _generateHookFactory(
   } else {
     hookGenerics.push(`TQueryData = ${defaultQueryTData}`);
     hookGenerics.push(`TError = Error`);
-    // Queries can have TQueryParams for their parameters argument
     if (actualParametersTypeName) {
       hookGenerics.push(`TQueryParams = ${defaultQueryParamsType}`);
     }
 
+    // 1. Construct the parts for the QueryKey's TYPE (as a string literal tuple)
+    const queryKeyTypePartsStrings: string[] = [];
+    baseQueryKeyParts.forEach((part) => queryKeyTypePartsStrings.push(part)); // e.g., `'tag'`, `'endpoint'` are already strings
+    pathParams.forEach((_p) => queryKeyTypePartsStrings.push("string")); // Path params are typed as string in the key
+    if (actualParametersTypeName) {
+      // If queryParams object itself is part of the key, its type TQueryParams is used.
+      // For queryKey type definition, we often use the actual type rather than a generic placeholder if possible,
+      // but TQueryParams is appropriate here as it's a generic on the hook.
+      queryKeyTypePartsStrings.push("TQueryParams");
+    }
+    const queryKeyTypeString = `readonly [${queryKeyTypePartsStrings.join(", ")}]`;
+    // Generate a unique name for this specific query key type to avoid collisions if multiple hooks in a file
+    const specificQueryKeyTypeName = `_${toPascalCase(hookFactoryName)}_QueryKey`;
+
+    // 2. Generate the type alias definition string
+    // This type alias will be part of the string output of _generateHookFactory
+    queryKeyTypeAliasDefinition = `type ${specificQueryKeyTypeName} = ${queryKeyTypeString};\n`;
+
+    // 3. Define queryHookParams using this type alias
     const queryHookParams: string[] = [];
     if (pathParamsForFactorySignatureString) {
       queryHookParams.push(pathParamsForFactorySignatureString);
     }
     if (actualParametersTypeName) {
       queryHookParams.push(`queryParams: TQueryParams`);
-      sgFunctionCallArgs.push(`queryParams`);
+      // sgFunctionCallArgs.push(`queryParams`); // This is already handled when constructing sgFunctionCallArgs before isMutation check
     }
     queryHookParams.push(
-      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, typeof queryKey>, 'queryKey' | 'queryFn'>`
+      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, ${specificQueryKeyTypeName}>, 'queryKey' | 'queryFn'>`
     );
     optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
 
-    // Query key includes path params from factory and queryParams from hook args
-    const queryKeyParts = [...baseQueryKeyParts, ...pathParamArgsForSgFunction];
+    // 4. Define the runtime queryKey variable as before
+    const runtimeQueryKeyParts = [...baseQueryKeyParts, ...pathParamArgsForSgFunction];
     if (actualParametersTypeName) {
-      queryKeyParts.push(`...(queryParams ? [queryParams] : [])`);
+      // Spread the queryParams object if it exists, otherwise spread an empty array to not add 'undefined' to the key
+      runtimeQueryKeyParts.push(`...(queryParams ? [queryParams] : [])`);
     }
-    const queryKeyDefinition = `const queryKey = [${queryKeyParts.join(", ")}] as const;`;
-    const finalSgFunctionCallArgsString = sgFunctionCallArgs.join(", ");
+    const queryKeyDefinition = `const queryKey = [${runtimeQueryKeyParts.join(", ")}] as const;`;
+    const finalSgFunctionCallArgsString = sgFunctionCallArgs.join(", "); // Ensure sgFunctionCallArgs is correctly built before this point
 
+    // 5. The useQuery call
     reactQueryHookBlock = `
     ${queryKeyDefinition} 
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
@@ -471,7 +493,11 @@ export function _generateHookFactory(
 
   const genericString = hookGenerics.length > 0 ? `<\n    ${hookGenerics.join(",\n    ")}\n  >` : "";
 
-  return `${operationGroupBanner}\nexport function ${hookFactoryName}(requester: SGSyncRequester) {\n  /**\n${indentedSummary}\n   */\n  return ${genericString}(${optionsAndHookParamsString}) => {${reactQueryHookBlock}\n  };\n}\n`;
+  // For query hooks, prepend the type alias definition.
+  // For mutation hooks, this will be an empty string.
+  const leadingDefinitions = !isMutation ? queryKeyTypeAliasDefinition : "";
+
+  return `${leadingDefinitions}${operationGroupBanner}\nexport function ${hookFactoryName}(requester: SGSyncRequester) {\n  /**\n${indentedSummary}\n   */\n  return ${genericString}(${optionsAndHookParamsString}) => {${reactQueryHookBlock}\n  };\n}\n`;
 }
 
 // Placeholder for SGSyncRequesterOptions and SGSyncRequester if not globally available in this context
