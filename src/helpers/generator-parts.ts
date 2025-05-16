@@ -408,28 +408,29 @@ export function _generateHookFactory(
     // Arguments to pass to the underlying sgFunction from within mutationFn
     sgFunctionCallArgs = [...pathParamArgsForSgFunction]; // Start with path parameters
 
+    // Argument for 'data' parameter of sgFunction
     if (actualRequestBodyTypeName) {
-      // If a request body is expected, 'variables' (from mutationFn) is used for it.
+      // sgFunction expects 'data'
+      // 'variables' from mutationFn (of type TVariables) is used for 'data'.
+      // This is correct because TVariables defaults to defaultRequestBodyType
+      // if there's a request body.
       sgFunctionCallArgs.push("variables");
-    } else {
-      // No request body for sgFunction, pass undefined.
-      sgFunctionCallArgs.push("undefined");
     }
+    // If actualRequestBodyTypeName is null, sgFunction does NOT expect a 'data' param, so nothing is added.
 
+    // Argument for 'params' parameter of sgFunction
     if (actualParametersTypeName) {
-      // If query parameters are expected:
+      // sgFunction expects 'params'
       if (actualRequestBodyTypeName) {
-        // If there was also a request body, 'queryParams' comes from the hook factory's closure.
+        // sgFunction also expected 'data'. 'TVariables' was for 'data'.
+        // Hook has a separate TQueryParams generic, and 'queryParams' parameter in factory.
         sgFunctionCallArgs.push("queryParams");
       } else {
-        // If no request body, 'variables' (from mutationFn) is used for query parameters.
+        // sgFunction did NOT expect 'data'. 'TVariables' is for 'params'.
         sgFunctionCallArgs.push("variables");
       }
-    } else {
-      // No query parameters for sgFunction, pass undefined.
-      sgFunctionCallArgs.push("undefined");
     }
-    // callSpecificOptions for sgFunction is not explicitly passed from here; it will use its default.
+    // If actualParametersTypeName is null, sgFunction does NOT expect a 'params' param, so nothing is added.
 
     const finalSgFunctionCallArgsString = sgFunctionCallArgs.join(", ");
 
