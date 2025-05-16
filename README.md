@@ -15,49 +15,6 @@ Files are organized into **tag-based directories**, where the tag is determined 
 
 SGSchema-Sync now employs a **factory-based approach** for generating API functions and hooks, coupled with a flexible requester system:
 
-**⚠️ BREAKING CHANGE in vNEXT: Updated `SGSyncRequester` Interface ⚠️**
-
-The `SGSyncRequester` abstraction has been updated to provide better type safety and flexibility for request and response overrides.
-
-*   **Previous:** `SGSyncRequester` was a direct function type:
-    `type SGSyncRequester = (options: SGSyncRequesterOptions) => Promise<SGSyncResponse<any>>`
-*   **New:** `SGSyncRequester` is now an **interface** requiring an object with a `request` method:
-    ```typescript
-    export interface SGSyncRequester {
-      request: <TResponseData = any, TRequestBody = any, TQueryParams = any>(
-        options: SGSyncRequesterOptions<TRequestBody, TQueryParams>
-      ) => Promise<SGSyncResponse<TResponseData>>;
-    }
-    ```
-*   **`SGSyncRequesterOptions` is now generic:**
-    `SGSyncRequesterOptions<TRequestBody = any, TQueryParams = any>` allowing for typed `data` (request body) and `params` (query parameters).
-
-**Impact on Custom Requesters:**
-If you have implemented a custom requester, you **must** update it to conform to this new interface. Instead of exporting a single function, you now need to export an object that has a `request` method with the specified generic signature.
-
-**Example of updated custom requester structure:**
-```typescript
-// your-custom-requester.ts
-import type { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';
-
-export const myCustomRequester: SGSyncRequester = {
-  async request<TResponseData = any, TRequestBody = any, TQueryParams = any>(
-    options: SGSyncRequesterOptions<TRequestBody, TQueryParams>
-  ): Promise<SGSyncResponse<TResponseData>> {
-    // Your existing request logic here, adapted to use options.data, options.params
-    // Ensure you return a Promise<SGSyncResponse<TResponseData>>
-    const { method, url, data, params, headers, authRequire } = options;
-
-    // ... build request, make call ...
-
-    // Example return (actual implementation will vary)
-    // return { data: responseData as TResponseData, status, statusText, headers, config: options };
-    throw new Error("Not implemented");
-  }
-};
-```
-The `createDefaultSGSyncRequester` provided by this tool has been updated to conform to this new interface.
-
 1.  **Core Generation (Factories):**
     *   `functions.ts` (per tag): Contains factory functions (e.g., `createGetProductFunction(requester)`) for each API operation. These factories take an `SGSyncRequester` instance and return an actual async function to call the API.
     *   `hooks.ts` (per tag, if `generateHooks: true`): Contains factory functions (e.g., `createUseGetProductHook(requester)`) for TanStack Query hooks. These also take an `SGSyncRequester`.
