@@ -186,7 +186,14 @@ export async function generateFilesForTag(
       finalHooksImports += `import * as ${tagImportName} from './types';\n`;
     }
 
-    const tanstackImports = ["QueryKey", "useMutation", "UseMutationOptions", "useQuery", "UseQueryOptions"].sort();
+    const tanstackImports = [
+      "QueryKey",
+      "QueryFunctionContext",
+      "useMutation",
+      "UseMutationOptions",
+      "useQuery",
+      "UseQueryOptions",
+    ].sort();
     finalHooksImports += `import {\n  ${tanstackImports.join(",\n  ")}\n} from '@tanstack/react-query';\n`;
 
     if (functionFactoryNames.length > 0) {

@@ -500,7 +500,8 @@ export function _generateHookFactory(
     reactQueryHookBlock = `
     ${queryKeyDefinition} 
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
-    const queryFn = async () => { // Define queryFn separately for clarity
+    const queryFn = async (context: QueryFunctionContext<${specificQueryKeyTypeName}>) => { // Define queryFn separately for clarity, include context
+      // context.queryKey, context.signal etc. are available here if needed by sgFunction
       return sgFunction(${finalSgFunctionCallArgsString_Query});
     };
 
