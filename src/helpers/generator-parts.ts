@@ -457,7 +457,7 @@ export function _generateHookFactory(
       // If queryParams object itself is part of the key, its type TQueryParams is used.
       // For queryKey type definition, we often use the actual type rather than a generic placeholder if possible,
       // but TQueryParams is appropriate here as it's a generic on the hook.
-      queryKeyTypePartsStrings.push("TQueryParams");
+      queryKeyTypePartsStrings.push(defaultQueryParamsType); // Use the resolved default type for the alias
     }
     const queryKeyTypeString = `readonly [${queryKeyTypePartsStrings.join(", ")}]`;
     // Generate a unique name for this specific query key type to avoid collisions if multiple hooks in a file
