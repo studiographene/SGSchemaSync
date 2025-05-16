@@ -31,8 +31,8 @@
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
     "start": "node dist/cli.js",
     "prepare": "pnpm build",
-    "test-tool": "rimraf test-output && pnpm build && node dist/cli.js -i https://dev.surveyapi.59club.studiographene.xyz/api/api-docs.json -o test-output --react-query",
-    "test-tool-config": "rimraf test-output/api/config-test && pnpm build && node dist/cli.js -o test-output/api/config-test --react-query --config src/helpers/testconfig.ts"
+    "test-tool": "rimraf test-output && pnpm build && node dist/cli.js -i https://petstore3.swagger.io/api/v3/openapi.json -o test-output --config sg-schema-sync.test-config.js",
+    "test-tool-config": "rimraf test-output/api/config-test && pnpm build && node dist/cli.js -o test-output/api/config-test --config src/helpers/testconfig.ts"
   },
   "keywords": [
     "api",

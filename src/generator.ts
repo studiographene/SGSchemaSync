@@ -1,8 +1,5 @@
 import { OpenAPIV3 } from "openapi-types";
-import { compile, JSONSchema } from "json-schema-to-typescript";
 import { OperationInfo } from "./index"; // Import shared type
-import { OpenAPISpec } from "./parser";
-// import { format } from 'prettier'; // Removing prettier for now
 import {
   toTsIdentifier,
   toPascalCase,
@@ -11,9 +8,9 @@ import {
   createOperationGroupBanner,
 } from "./helpers/generator-helpers";
 import { PackageConfig, ResolvedPackageConfig, defaultConfig } from "./config";
-// NEW: Import requester types
-import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from "./requester-types";
 // Corrected path: ./ instead of ../
+// Import the new helper function
+import { _generateFunctionFactory, _generateOperationTypes, _generateHookFactory } from "./helpers/generator-parts";
 
 export async function generateFilesForTag(
   tagName: string,
@@ -67,28 +64,23 @@ export async function generateFilesForTag(
     let processedPath = path;
     if (packageConfig.stripPathPrefix && processedPath.startsWith(packageConfig.stripPathPrefix)) {
       processedPath = processedPath.substring(packageConfig.stripPathPrefix.length);
-      // Ensure the path still starts with a / if it's not empty after stripping
       if (processedPath && !processedPath.startsWith("/")) {
         processedPath = "/" + processedPath;
       }
     }
 
     // BaseName for types (uses operationId or path)
-    // For types, we still use the original path for getPathBasedBaseName to maintain original naming if stripPathPrefix is only for URL construction
     const baseNameForTypes = operationId ? toPascalCase(operationId) : getPathBasedBaseName(path);
 
-    // --- Generate function name using new convention ---
-    // Use processedPath for endpointBaseName if it affects naming conventions for functions/hooks
-    const endpointBaseName = getPathBasedBaseName(processedPath);
-    const methodUpper = method.toUpperCase();
+    // Generate function, type, and hook base names from config templates
     const methodPascal = toPascalCase(method);
+    const endpointBaseName = getPathBasedBaseName(processedPath);
 
-    // Generate names using templates from config
     const functionName = (packageConfig.generateFunctionNames ?? defaultConfig.generateFunctionNames!)
       .replace("{method}", methodPascal)
       .replace("{Endpoint}", endpointBaseName);
 
-    const typeBaseName = (packageConfig.generateTypesNames ?? defaultConfig.generateTypesNames!)
+    const typeBaseNameForOperation = (packageConfig.generateTypesNames ?? defaultConfig.generateTypesNames!)
       .replace("{Method}", methodPascal)
       .replace("{Endpoint}", endpointBaseName);
 
@@ -96,360 +88,135 @@ export async function generateFilesForTag(
       .replace("{Method}", methodPascal)
       .replace("{Endpoint}", endpointBaseName);
 
-    // Add Operation Banners to Types File (using operation summary)
     const summary = operation.summary || "No Description Provided";
-
-    // Create banner for the operation group, use processedPath for display
     const operationGroupBanner = createOperationGroupBanner(operation.summary, method, processedPath);
 
-    typesContent += `\n\n${operationGroupBanner}\n`;
+    typesContent += `\n\n${operationGroupBanner}\n`; // Add banner before types for this operation
 
-    // Flags and type name variables initialization
-    let actualRequestBodyTypeName: string | null = null;
-    let requestBodyFailed = false;
-    let actualParametersTypeName: string | null = null;
-    let parametersTypeFailed = false;
-    let primaryResponseTypeName: string | null = null;
-    let primaryResponseTypeGenerated = false;
-    let responseTypeFailed = false;
+    // --- Generate Types for the current operation using the helper ---
+    const {
+      typesString: operationTypesString,
+      requestBodyTypeName: actualRequestBodyTypeName,
+      parametersTypeName: actualParametersTypeName,
+      primaryResponseTypeName,
+      requestBodyFailed,
+      parametersTypeFailed,
+      responseTypeFailed,
+      primaryResponseTypeGenerated,
+    } = await _generateOperationTypes(
+      opInfo,
+      typeBaseNameForOperation, // Use the more specific name for type generation
+      tagName, // For logging inside the helper
+      generatedTypeNames // Pass the set to track unique names
+    );
+    typesContent += operationTypesString;
+    // No need to re-initialize actualRequestBodyTypeName, etc. as they are returned by the helper.
 
-    // Determine authRequirement
+    // Determine authRequirement (remains here as it's straightforward)
     const authRequire = !!(operation.security && operation.security.length > 0);
-    // console.log(`    [Auth] Operation ${method.toUpperCase()} ${path} requires auth: ${authRequire}`);
 
-    // --- Generate Request Body Type ---
-    if (operation.requestBody && "content" in operation.requestBody) {
-      const requestBodySchema = operation.requestBody.content?.["application/json"]?.schema;
-      if (requestBodySchema) {
-        const typeName = `${typeBaseName}_Request`;
-        actualRequestBodyTypeName = typeName;
-        if (!generatedTypeNames.has(typeName)) {
-          try {
-            const tsType = await compile(requestBodySchema as JSONSchema, typeName, { bannerComment: "" });
-            typesContent += `\n${tsType}\n`;
-            generatedTypeNames.add(typeName);
-          } catch (err: any) {
-            const errMsg = err.message;
-            console.warn(`    [${tagName}] Failed to generate request body type ${typeName}: ${errMsg}`);
-            typesContent += `\n// ⚠️ Type generation failed for ${typeName}: ${errMsg}\n// Check the OpenAPI spec, especially $refs.\n`;
-            actualRequestBodyTypeName = null;
-            requestBodyFailed = true;
-          }
-        }
-      }
-    }
-
-    // --- Generate Response Types ---
-    for (const statusCode in operation.responses) {
-      if (statusCode.startsWith("2")) {
-        const response = operation.responses[statusCode] as OpenAPIV3.ResponseObject;
-        const primarySuccessCode = method === "post" ? "201" : "200";
-        const isPrimary = statusCode === primarySuccessCode;
-        if (response && "content" in response && response.content?.["application/json"]?.schema) {
-          const responseSchema = response.content["application/json"].schema;
-          const typeName = `${typeBaseName}_Response${isPrimary ? "" : `_${statusCode}`}`;
-          if (isPrimary) primaryResponseTypeName = typeName;
-          if (!generatedTypeNames.has(typeName)) {
-            try {
-              const tsType = await compile(responseSchema as JSONSchema, typeName, { bannerComment: "" });
-              typesContent += `\n${tsType}\n`;
-              generatedTypeNames.add(typeName);
-              if (isPrimary) primaryResponseTypeGenerated = true;
-            } catch (err: any) {
-              const errMsg = err.message;
-              console.warn(
-                `    [${tagName}] Failed to generate response type ${typeName} (status ${statusCode}): ${errMsg}`
-              );
-              typesContent += `\n// ⚠️ Type generation failed for ${typeName} (status ${statusCode}): ${errMsg}\n// Check the OpenAPI spec, especially $refs.\n`;
-              if (isPrimary) responseTypeFailed = true;
-            }
-          } else {
-            if (isPrimary) primaryResponseTypeGenerated = true;
-          }
-        } else if (isPrimary && !response?.content) {
-          primaryResponseTypeName = "void";
-          primaryResponseTypeGenerated = true;
-        } else if (isPrimary) {
-          console.warn(
-            `    [${tagName}] No content schema for primary success ${primarySuccessCode} for ${functionName}.`
-          );
-          responseTypeFailed = true;
-        }
-      }
-    }
-
-    // --- Generate Parameters Type ---
-    const queryParams =
-      (operation.parameters?.filter(
-        (p) => (p as OpenAPIV3.ParameterObject).in === "query"
-      ) as OpenAPIV3.ParameterObject[]) || [];
-    if (queryParams && queryParams.length > 0) {
-      const paramsSchema: JSONSchema = { type: "object", properties: {}, required: [] };
-      queryParams.forEach((p) => {
-        if (paramsSchema.properties) {
-          paramsSchema.properties[p.name] = p.schema || { type: "string" };
-          if (p.required) {
-            if (!Array.isArray(paramsSchema.required)) {
-              paramsSchema.required = [];
-            }
-            paramsSchema.required.push(p.name);
-          }
-        }
-      });
-      if (Object.keys(paramsSchema.properties || {}).length > 0) {
-        const typeName = `${typeBaseName}_Parameters`;
-        actualParametersTypeName = typeName;
-        if (!generatedTypeNames.has(typeName)) {
-          try {
-            const tsType = await compile(paramsSchema, typeName, { bannerComment: "", additionalProperties: false });
-            typesContent += `\n${tsType}\n`;
-            generatedTypeNames.add(typeName);
-          } catch (err: any) {
-            const errMsg = err.message;
-            console.warn(`    [${tagName}] Failed to generate parameters type ${typeName}: ${errMsg}`);
-            typesContent += `\n// ⚠️ Type generation failed for ${typeName}: ${errMsg}\n// Check the OpenAPI spec, especially $refs.\n`;
-            actualParametersTypeName = null;
-            parametersTypeFailed = true;
-          }
-        }
-      }
-    }
-
-    // --- Assemble Function Factory ---
+    // --- Define variables needed by both function factory and hook generation ---
     const pathParams =
       (operation.parameters?.filter(
         (p) => (p as OpenAPIV3.ParameterObject).in === "path"
       ) as OpenAPIV3.ParameterObject[]) || [];
 
-    const factoryInnerFuncParamsList: string[] = [];
-    pathParams.forEach((p) => {
-      factoryInnerFuncParamsList.push(`${toTsIdentifier(p.name)}: string`);
-    });
-
-    let requestBodyTypeForFunc: string | null = null;
-    if (actualRequestBodyTypeName) {
-      requestBodyTypeForFunc = `${tagImportName}.${actualRequestBodyTypeName}`;
-      factoryInnerFuncParamsList.push(`data: ${requestBodyTypeForFunc}`);
-    }
-
-    let queryParamsTypeForFunc: string | null = null;
-    if (actualParametersTypeName) {
-      queryParamsTypeForFunc = `${tagImportName}.${actualParametersTypeName}`;
-      factoryInnerFuncParamsList.push(`params?: ${queryParamsTypeForFunc}`);
-    }
-
-    // Add callSpecificOptions to the inner function
-    // Omitting fields that are set by the factory itself
-    const callSpecificOptionsType = `Partial<Omit<SGSyncRequesterOptions, 'method' | 'url' | 'authRequire'${requestBodyTypeForFunc ? " | 'data'" : ""}${queryParamsTypeForFunc ? " | 'params'" : ""}>>`;
-    factoryInnerFuncParamsList.push(`callSpecificOptions?: ${callSpecificOptionsType}`);
-
-    const factoryInnerFuncParamsString = factoryInnerFuncParamsList.join(",\n    ");
-    // Use processedPath for generating the runtime urlPath
-    const urlPath = processedPath.replace(/{([^}]+)}/g, (match, paramNameInPath) => {
-      const sanitizedParamName = toTsIdentifier(paramNameInPath);
-      return `\${${sanitizedParamName}}`; // Ensure this correctly interpolates the variable
-    });
-
-    let finalResponseTypeNameForSig: string;
-    let responseTypeForSGSyncResponse: string;
-
-    if (primaryResponseTypeGenerated) {
-      if (primaryResponseTypeName === "void") {
-        finalResponseTypeNameForSig = "void";
-        responseTypeForSGSyncResponse = "void";
-      } else if (primaryResponseTypeName) {
-        finalResponseTypeNameForSig = `${tagImportName}.${primaryResponseTypeName}`;
-        responseTypeForSGSyncResponse = finalResponseTypeNameForSig;
-      } else {
-        finalResponseTypeNameForSig = "any";
-        responseTypeForSGSyncResponse = "any";
-      }
-    } else {
-      finalResponseTypeNameForSig = "any";
-      responseTypeForSGSyncResponse = "any";
-    }
-
-    let functionComment = "";
-    if (requestBodyFailed) {
-      functionComment += `// ⚠️ WARNING: Request Body type generation failed. 'data' parameter type may be incorrect.\n`;
-    }
-    if (parametersTypeFailed) {
-      functionComment += `// ⚠️ WARNING: Parameters type generation failed. 'params' parameter type may be incorrect.\n`;
-    }
-    if (responseTypeFailed || (!primaryResponseTypeGenerated && primaryResponseTypeName !== "void")) {
-      functionComment += `// ⚠️ WARNING: Response type generation failed or schema missing. Expected response type is '${responseTypeForSGSyncResponse}'.\n`;
-    }
-
-    let functionString = "";
-    if (functionComment) {
-      functionString += `\n${functionComment}`;
-    }
-    functionString += `\n\n${operationGroupBanner}\n`;
-    functionString += `/**\n * Factory for a function to call ${summary}\n`;
-    if (operation.description && operation.description !== summary) {
-      functionString += ` * ${operation.description.replace(/\n/g, "\n * ")}\n`;
-    }
-    functionString += ` * @param requester The SGSyncRequester instance to use for making the actual HTTP request.\n`;
-    functionString += ` */\n`;
-    // Note: baseFunctionName is what the user will call, functionFactoryName is the exported factory.
-    functionString += `export const ${functionName} = (requester: SGSyncRequester) => {\n`;
-    functionString += `  /**\n   * ${summary}\n   */\n`;
-    functionString += `  return async (\n    ${factoryInnerFuncParamsString}\n  ): Promise<SGSyncResponse<${responseTypeForSGSyncResponse}>> => {\n`;
-    functionString += `    const path = \`${urlPath}\`;\n`;
-    functionString += `    const options: SGSyncRequesterOptions = {\n`;
-    functionString += `      method: '${method}',\n`;
-    functionString += `      url: path,\n`;
-    functionString += `      authRequire: ${authRequire},`;
-    if (queryParamsTypeForFunc) {
-      functionString += `
-      params: params,`;
-    }
-    if (requestBodyTypeForFunc) {
-      functionString += `
-      data: data,`;
-    }
-    functionString += `
-      ...(callSpecificOptions || {}),
-    };\n`;
-    functionString += `    return requester<${responseTypeForSGSyncResponse}>(options);\n`;
-    functionString += `  };\n`;
-    functionString += `};\n`;
-
-    functionsContent += functionString;
+    // --- Call the helper to generate the function factory string ---
+    const currentFunctionFactoryString = _generateFunctionFactory(
+      opInfo,
+      functionName,
+      summary,
+      operationGroupBanner, // This banner is now generated before types and function factory
+      tagImportName,
+      processedPath,
+      authRequire,
+      actualRequestBodyTypeName, // From _generateOperationTypes
+      actualParametersTypeName, // From _generateOperationTypes
+      primaryResponseTypeName, // From _generateOperationTypes
+      requestBodyFailed, // From _generateOperationTypes
+      parametersTypeFailed, // From _generateOperationTypes
+      responseTypeFailed, // From _generateOperationTypes
+      primaryResponseTypeGenerated, // From _generateOperationTypes
+      packageConfig
+    );
+    functionsContent += currentFunctionFactoryString;
     functionFactoryNames.push(functionName);
 
-    // --- Generate React Query Hook (if enabled) ---
+    // --- Generate React Query Hook (if enabled) by calling the helper ---
     if (reactQueryEnabled && packageConfig.generateHooks) {
-      hooksGenerated = true; // Mark that at least one hook is generated for this tag
+      hooksGenerated = true; // Mark that at least one hook is attempted for this tag
 
-      const hookFactoryName = `create${hookBaseName}Hook`;
-      hookFactoryNames.push(hookFactoryName);
+      const hookFactoryName = `create${hookBaseName}Hook`; // hookBaseName is defined earlier
 
-      // Determine queryKey structure - use processedPath for endpointBaseName which is used in queryKeyParts
-      let queryKeyParts = [`"${sanitizedTagName}"`, `"${endpointBaseName}"`]; // endpointBaseName is now from processedPath
-      pathParams.forEach((p) => queryKeyParts.push(toTsIdentifier(p.name)));
+      const currentHookFactoryString = _generateHookFactory(
+        opInfo,
+        hookFactoryName,
+        functionName, // This is the `correspondingFunctionFactoryName`
+        summary,
+        operationGroupBanner, // Pass the same banner
+        tagImportName,
+        sanitizedTagName, // Defined at the top of generateFilesForTag
+        endpointBaseName, // Defined earlier based on processedPath
+        processedPath,
+        actualRequestBodyTypeName, // From _generateOperationTypes
+        actualParametersTypeName, // From _generateOperationTypes
+        primaryResponseTypeName, // From _generateOperationTypes
+        pathParams, // Defined earlier in the loop
+        packageConfig
+      );
 
-      // Arguments for the function created by the function factory (these are the actual values passed, not type defs)
-      const factoryInnerFuncArgsForHookCall = factoryInnerFuncParamsList.map((param) => {
-        return param.split(":")[0].replace("?", "").trim();
-      });
-
-      let hookComment = `/**\n`;
-      hookComment += ` * Factory for creating a TanStack Query hook for: ${summary}\n`;
-      hookComment += ` * Method: ${method.toUpperCase()}, Path: ${processedPath}\n`; // Use processedPath in comments
-      if (operation.description) {
-        hookComment += ` * Description: ${operation.description.replace(/\n/g, "\n *   ")}\n`;
-      }
-      hookComment += ` * @param requester The SGSyncRequester instance to use for making the underlying API call.\n`;
-      hookComment += ` * @returns A TanStack Query hook.\n`;
-      hookComment += ` */`;
-
-      hooksContent += `\n${hookComment}\n`;
-      hooksContent += `export function ${hookFactoryName}(\n  requester: SGSyncRequester\n) {\n`;
-
-      hooksContent += `  const ${functionName}Instance = ${functionName}(requester);\n`;
-
-      if (method === "get") {
-        const hookSignatureParamsList: string[] = [];
-        pathParams.forEach((p) => hookSignatureParamsList.push(`${toTsIdentifier(p.name)}: string`));
-        if (queryParamsTypeForFunc) {
-          queryKeyParts.push("queryParams");
-          hookSignatureParamsList.push(`queryParams?: ${queryParamsTypeForFunc}`);
-        }
-        hookSignatureParamsList.push(`callSpecificOptions?: ${callSpecificOptionsType}`);
-
-        const queryOptionsType = `Omit<UseQueryOptions<${finalResponseTypeNameForSig}, Error, ${finalResponseTypeNameForSig}, QueryKey>, 'queryKey' | 'queryFn'>`;
-        hooksContent += `  return function ${hookBaseName}(\n`;
-        hooksContent += `    ${hookSignatureParamsList.join(",\n    ")}${hookSignatureParamsList.length > 0 ? "," : ""}\n`;
-        hooksContent += `    queryOptions?: ${queryOptionsType}\n`;
-        hooksContent += `  ) {\n`;
-        hooksContent += `    const queryKeyInternal = [${queryKeyParts.join(", ")}] as QueryKey;\n`;
-
-        // Construct the argument string for the function call within queryFn
-        const queryFnCallArgsString = factoryInnerFuncArgsForHookCall
-          .map((arg) => (arg === "params" ? "queryParams" : arg))
-          .join(", ");
-
-        hooksContent += `    return useQuery<${finalResponseTypeNameForSig}, Error, ${finalResponseTypeNameForSig}, QueryKey>({\n`;
-        hooksContent += `      queryKey: queryKeyInternal,\n`;
-        hooksContent += `      queryFn: async () => {\n`;
-        hooksContent += `        const response = await ${functionName}Instance(${queryFnCallArgsString});\n`;
-        hooksContent += `        return response.data; // Assumes response structure { data: T }\n`;
-        hooksContent += `      },\n`;
-        hooksContent += `      ...(queryOptions || {}),\n`;
-        hooksContent += `    });\n`;
-        hooksContent += `  };\n`;
+      if (currentHookFactoryString && currentHookFactoryString.trim() !== "") {
+        hooksContent += currentHookFactoryString;
+        hookFactoryNames.push(hookFactoryName);
       } else {
-        // useMutation
-        let mutationVariablesType = "void";
-        // Determine mutationVariablesType based on what functionNameInstance expects.
-        // This mirrors the logic in factoryInnerFuncParamsList for functionFactoryName
-        const mutationFuncExpectedParams = factoryInnerFuncParamsList;
-        if (mutationFuncExpectedParams.length === 1) {
-          const singleParamType = mutationFuncExpectedParams[0].split(":")[1].trim();
-          mutationVariablesType = singleParamType;
-        } else if (mutationFuncExpectedParams.length > 1) {
-          // Create an object type for variables
-          mutationVariablesType = `{ ${mutationFuncExpectedParams.map((p) => p.replace("?:", ":")).join("; ")} }`;
+        if (packageConfig.verbose) {
+          console.log(`    [${tagName}] _generateHookFactory returned empty for ${hookFactoryName}, skipping.`);
         }
-
-        const mutationOptionsType = `Omit<UseMutationOptions<${finalResponseTypeNameForSig}, Error, ${mutationVariablesType}>, 'mutationFn'>`;
-        hooksContent += `  return function ${hookBaseName}(\n`;
-        hooksContent += `    mutationOptions?: ${mutationOptionsType}\n`;
-        hooksContent += `  ) {\n`;
-        hooksContent += `    return useMutation<${finalResponseTypeNameForSig}, Error, ${mutationVariablesType}>({\n`;
-        hooksContent += `      mutationFn: async (${mutationVariablesType === "void" ? "" : "variables"}) => {\n`;
-
-        let callArgs = "";
-        if (mutationVariablesType !== "void") {
-          if (mutationFuncExpectedParams.length === 1) {
-            callArgs = "variables";
-          } else if (mutationFuncExpectedParams.length > 1) {
-            callArgs = factoryInnerFuncArgsForHookCall.map((argName) => `variables.${argName}`).join(", ");
-          }
-        }
-
-        hooksContent += `        const response = await ${functionName}Instance(${callArgs});\n`;
-        hooksContent += `        return response.data; // Assumes response structure { data: T }\n`;
-        hooksContent += `      },\n`;
-        hooksContent += `      ...(mutationOptions || {}),\n`;
-        hooksContent += `    });\n`;
-        hooksContent += `  };\n`;
       }
-      hooksContent += `}\n`;
     }
   } // End loop through operations
 
   // Conditionally add import for './types' to functionsContent
   if (generatedTypeNames.size > 0) {
-    // Insert it after the requester import but before the first function definition.
-    // A simple way is to prepend it to the collected function strings if we know there's other content.
-    // Or, more robustly, rebuild functionsContent if we need precise placement.
-    // For now, let's find a marker or prepend to the accumulated functions string part.
-    // Let's adjust how functionsContent is built to make this cleaner.
-    // We'll collect all function strings and then prepend imports.
-
-    let allFunctionStrings = "";
-    for (const funcName of functionFactoryNames) {
-      // This assumes functionString was the last one generated and corresponds to funcName.
-      // This is a bit of a simplification; ideally, we'd store all functionStrings.
-      // For this refactor, we'll assume 'functionsContent' holds all generated function strings
-      // after the initial banner and requester import.
-      // This part needs refinement if we want to re-use 'functionString'
-    }
-    // The actual function strings are already in 'functionsContent'.
-    // We need to insert the import.
-    // A simpler approach: construct the core content, then add imports at the top.
-
-    // Let's rebuild functionsContent to ensure correct order
-    let finalFunctionsContent = `${functionTopBanner}\n\n${standardFileComment}\n\n`;
-    finalFunctionsContent += `// Imports for the requester mechanism\n`;
-    finalFunctionsContent += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
-    finalFunctionsContent += `import * as ${tagImportName} from './types';\n\n`; // Added conditionally
-    finalFunctionsContent += functionsContent.substring(
-      functionsContent.indexOf("/*---") // Assuming operation group banners start like this
-    ); // Append the actual function definitions
-    functionsContent = finalFunctionsContent;
+    // The main `functionsContent` already has the function factory strings accumulated from the loop.
+    // We just need to ensure the imports are at the top.
+    // Let's rebuild functionsContent to ensure correct order of imports and then content.
+    // The current `functionsContent` starts with banners and initial `sg-schema-sync/requester-types` import,
+    // then `tagImportName` types import, then all the actual function factories.
+    // The helpers _generateFunctionFactory and _generateHookFactory add their own operationGroupBanners.
+    // The `functionsContent` at this point should look like:
+    // Banner + Standard Comment
+    // import { SGSyncRequester... } from 'sg-schema-sync/requester-types';
+    // import * as ${tagImportName} from './types';
+    // OperationGroupBanner for op1
+    // export function createOp1 ...
+    // OperationGroupBanner for op2
+    // export function createOp2 ...
+    // This structure is already correct because `functionsContent` is built sequentially:
+    // 1. Top banner + standard comment.
+    // 2. Requester types import.
+    // 3. `* as ${tagImportName} from './types'` import (this was added early).
+    // 4. Then, in the loop, each call to _generateFunctionFactory returns a string starting with
+    //    an operationGroupBanner, which is then appended.
+    // So, no specific rebuilding of functionsContent is needed here if the `import * as ${tagImportName}`
+    // was correctly added *before* the loop started appending function factory strings.
+    // Reviewing the top of the file for `functionsContent` initial build:
+    // functionsContent += `import * as ${tagImportName} from './types';\\n\\n`; IS added before the loop.
+    // Therefore, this entire if block might be redundant if the only goal was to add this import,
+    // as it's already done.
+    // However, the original code had a more complex reconstruction here, let's simplify but ensure imports are correctly ordered if there was a subtle reason.
+    // The current structure of `functionsContent` is already:
+    // 1. functionTopBanner + standardFileComment
+    // 2. SGSyncRequester import
+    // 3. `tagImportName` import (e.g., `import * as UsersTypes from './types';`)
+    // 4. Concatenated strings from `_generateFunctionFactory` (each starting with an op banner)
+    // This order is correct. The `if (generatedTypeNames.size > 0)` was likely a guard
+    // for the `import * as ${tagImportName} from './types';` line.
+    // Since that import is now added unconditionally earlier:
+    // `functionsContent += \`import * as ${tagImportName} from './types';\\n\\n\`;` (line 40 approx)
+    // this whole if block for rebuilding `functionsContent` is indeed no longer necessary.
+    // The check `generatedTypeNames.size > 0` is still useful for the return value of `generateFilesForTag`
+    // (`hasGeneratedTypes`), but not for rebuilding `functionsContent` here.
   }
 
   // --- Add Imports and Header to hooksContent if needed ---
