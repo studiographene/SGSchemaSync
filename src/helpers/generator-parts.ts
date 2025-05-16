@@ -484,11 +484,17 @@ export function _generateHookFactory(
     // 4. Define the runtime queryKey variable as before
     const runtimeQueryKeyParts = [...baseQueryKeyParts, ...pathParamArgsForSgFunction];
     if (actualParametersTypeName) {
-      // Spread the queryParams object if it exists, otherwise spread an empty array to not add 'undefined' to the key
-      runtimeQueryKeyParts.push(`...(queryParams ? [queryParams] : [])`);
+      // queryParams is a required parameter for the hook if actualParametersTypeName is true
+      runtimeQueryKeyParts.push(`queryParams`);
     }
     const queryKeyDefinition = `const queryKey = [${runtimeQueryKeyParts.join(", ")}] as const;`;
-    const finalSgFunctionCallArgsString = sgFunctionCallArgs.join(", "); // Ensure sgFunctionCallArgs is correctly built before this point
+
+    // Construct arguments for the sgFunction call within the query
+    let currentSgFunctionCallArgs_Query = [...pathParamArgsForSgFunction];
+    if (actualParametersTypeName) {
+      currentSgFunctionCallArgs_Query.push("queryParams");
+    }
+    const finalSgFunctionCallArgsString_Query = currentSgFunctionCallArgs_Query.join(", ");
 
     // 5. The useQuery call
     reactQueryHookBlock = `
@@ -497,7 +503,7 @@ export function _generateHookFactory(
     return useQuery<TQueryData, TError, TQueryData, typeof queryKey>({
       queryKey,
       queryFn: async () => {
-        return sgFunction(${finalSgFunctionCallArgsString});
+        return sgFunction(${finalSgFunctionCallArgsString_Query});
       },
       ...queryOptions,
     });`;
