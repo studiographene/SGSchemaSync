@@ -505,7 +505,7 @@ export function _generateHookFactory(
       return sgFunction(${finalSgFunctionCallArgsString_Query});
     };
 
-    return useQuery<TQueryData, TError, TQueryData, ${specificQueryKeyTypeName}>({ // Use specificQueryKeyTypeName here
+    return useQuery<${defaultQueryTData}, TError, TQueryData, ${specificQueryKeyTypeName}>({ // Use specificQueryKeyTypeName here, and correct TQueryFnData vs TData
       ...queryOptions, // Spread user-provided options first
       queryKey: queryKey, // Then override with the definitive queryKey
       queryFn: queryFn,   // And the definitive queryFn
