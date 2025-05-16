@@ -181,10 +181,15 @@ export function _generateFunctionFactory(
     ) as OpenAPIV3.ParameterObject[]) || [];
 
   // Default Type Names for Generics
-  const defaultResponseType =
-    primaryResponseTypeName && primaryResponseTypeName !== "void"
-      ? `${tagImportName}.${primaryResponseTypeName}`
-      : "void";
+  let defaultResponseType: string;
+  if (primaryResponseTypeName === "void") {
+    defaultResponseType = "void";
+  } else if (primaryResponseTypeName && primaryResponseTypeGenerated) {
+    defaultResponseType = `${tagImportName}.${primaryResponseTypeName}`;
+  } else {
+    defaultResponseType = "any";
+  }
+
   const defaultRequestBodyType = actualRequestBodyTypeName ? `${tagImportName}.${actualRequestBodyTypeName}` : "never";
   const defaultQueryParamsType = actualParametersTypeName ? `${tagImportName}.${actualParametersTypeName}` : "never";
 
@@ -304,6 +309,7 @@ export function _generateHookFactory(
   actualRequestBodyTypeName: string | null,
   actualParametersTypeName: string | null,
   primaryResponseTypeName: string | null,
+  primaryResponseTypeGenerated: boolean,
   // Path parameters of the operation
   pathParams: OpenAPIV3.ParameterObject[],
   packageConfig: ResolvedPackageConfig // For verbose logging or future options
@@ -314,10 +320,15 @@ export function _generateHookFactory(
   let queryKeyTypeAliasDefinition = ""; // Initialize here
 
   // Default Type Names for Generics
-  const defaultResponseType =
-    primaryResponseTypeName && primaryResponseTypeName !== "void"
-      ? `${tagImportName}.${primaryResponseTypeName}`
-      : "void";
+  let defaultResponseType: string;
+  if (primaryResponseTypeName === "void") {
+    defaultResponseType = "void";
+  } else if (primaryResponseTypeName && primaryResponseTypeGenerated) {
+    defaultResponseType = `${tagImportName}.${primaryResponseTypeName}`;
+  } else {
+    defaultResponseType = "any";
+  }
+
   const defaultRequestBodyType = actualRequestBodyTypeName ? `${tagImportName}.${actualRequestBodyTypeName}` : "never";
   const defaultQueryParamsType = actualParametersTypeName ? `${tagImportName}.${actualParametersTypeName}` : "never";
 

@@ -155,6 +155,7 @@ export async function generateFilesForTag(
         actualRequestBodyTypeName,
         actualParametersTypeName,
         primaryResponseTypeName,
+        primaryResponseTypeGenerated,
         pathParams,
         packageConfig
       );
