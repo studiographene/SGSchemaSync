@@ -483,9 +483,9 @@ export function _generateHookFactory(
     if (actualParametersTypeName) {
       queryHookParams.push(`queryParams: TQueryParams`);
     }
-    // Use typeof queryKey directly in the Omit for queryOptions
+    // Use the specificQueryKeyTypeName for queryOptions type
     queryHookParams.push(
-      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, typeof queryKey>, 'queryKey' | 'queryFn'>`
+      `queryOptions?: Omit<UseQueryOptions<TQueryData, TError, TQueryData, ${specificQueryKeyTypeName}>, 'queryKey' | 'queryFn'>`
     );
     optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
 
