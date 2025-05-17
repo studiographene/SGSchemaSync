@@ -173,10 +173,16 @@ export async function generateFilesForTag(
   }
 
   let importsAddedToFunctionsPreamble = false;
+  const requiredBaseRequesterTypesForFunctions: string[] = [];
   if (functionFactoryNames.length > 0) {
+    requiredBaseRequesterTypesForFunctions.push("SGSyncRequester");
+    requiredBaseRequesterTypesForFunctions.push("SGSyncRequesterOptions");
+  }
+
+  if (requiredBaseRequesterTypesForFunctions.length > 0) {
     functionsFilePreamble.push(`// Imports for the requester mechanism\n`);
     functionsFilePreamble.push(
-      `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`
+      `import { ${requiredBaseRequesterTypesForFunctions.join(", ")} } from 'sg-schema-sync/requester-types';\n`
     );
     importsAddedToFunctionsPreamble = true;
   }
