@@ -226,7 +226,7 @@ export function _generateFunctionFactory(
   if (actualParametersTypeName) {
     callSpecificOptionsOmitParts += " | 'params'";
   }
-  const callSpecificOptionsType = `Partial<Omit<SGSyncRequesterOptions<TRequestBody>, ${callSpecificOptionsOmitParts}>>`;
+  const callSpecificOptionsType = `Partial<Omit<SGSyncRequesterOptions<TRequestBody, TQueryParams>, ${callSpecificOptionsOmitParts}>>`;
 
   innerFuncParamsList.push(`callSpecificOptions?: ${callSpecificOptionsType}`);
 
