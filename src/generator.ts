@@ -51,6 +51,8 @@ export async function generateFilesForTag(
 
   let hooksContentParts: string[] = [];
   let hooksGenerated = false;
+  let hasGeneratedQueryHooks = false;
+  let hasGeneratedMutationHooks = false;
 
   for (const opInfo of operations) {
     const { operation, path, method } = opInfo;
@@ -164,6 +166,11 @@ export async function generateFilesForTag(
       if (currentHookFactoryString && currentHookFactoryString.trim() !== "") {
         hooksContentParts.push(currentHookFactoryString);
         hookFactoryNames.push(hookFactoryName);
+        if (opInfo.method.toLowerCase() === "get") {
+          hasGeneratedQueryHooks = true;
+        } else {
+          hasGeneratedMutationHooks = true;
+        }
       } else {
         if (packageConfig.verbose) {
           console.log(`    [${tagName}] _generateHookFactory returned empty for ${hookFactoryName}, skipping.`);
@@ -202,20 +209,26 @@ export async function generateFilesForTag(
   if (reactQueryEnabled && hooksGenerated) {
     const hookTopBanner = createTopLevelBanner("hooks");
     let finalHooksImports = `// Imports for the requester mechanism and TanStack Query\n`;
-    finalHooksImports += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
+
+    if (hookFactoryNames.length > 0) {
+      finalHooksImports += `import { SGSyncRequester } from 'sg-schema-sync/requester-types';\n`;
+    }
+
     if (anyHookNeedsTypesImport) {
       finalHooksImports += `import * as ${tagImportName} from './types';\n`;
     }
 
-    const tanstackImports = [
-      "QueryKey",
-      "QueryFunctionContext",
-      "useMutation",
-      "UseMutationOptions",
-      "useQuery",
-      "UseQueryOptions",
-    ].sort();
-    finalHooksImports += `import {\n  ${tanstackImports.join(",\n  ")}\n} from '@tanstack/react-query';\n`;
+    const tanstackImports: string[] = [];
+    if (hasGeneratedQueryHooks) {
+      tanstackImports.push("QueryKey", "QueryFunctionContext", "useQuery", "UseQueryOptions");
+    }
+    if (hasGeneratedMutationHooks) {
+      tanstackImports.push("useMutation", "UseMutationOptions");
+    }
+    if (tanstackImports.length > 0) {
+      tanstackImports.sort();
+      finalHooksImports += `import {\n  ${tanstackImports.join(",\n  ")}\n} from '@tanstack/react-query';\n`;
+    }
 
     if (functionFactoryNames.length > 0) {
       let factoryImportStatements = "  " + functionFactoryNames.join(",\n  ");
