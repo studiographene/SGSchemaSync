@@ -34,12 +34,8 @@ export async function generateFilesForTag(
 
   // Create top-level banner for functions file
   const functionTopBanner = createTopLevelBanner("functions");
-  let functionsFileParts: string[] = []; // Collect parts to join later
-  functionsFileParts.push(`${functionTopBanner}\n\n${standardFileComment}\n\n`);
-  functionsFileParts.push(`// Imports for the requester mechanism\n`);
-  functionsFileParts.push(
-    `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`
-  );
+  let functionsFilePreamble: string[] = [`${functionTopBanner}\n\n${standardFileComment}\n`];
+  let functionDefinitions: string[] = [];
 
   const tagImportName = toTsIdentifier(tagName) + "Types";
   const sanitizedTagName = tagName.toLowerCase().replace(/\s+|\//g, "-");
@@ -140,7 +136,9 @@ export async function generateFilesForTag(
       primaryResponseTypeGenerated,
       packageConfig
     );
-    functionsFileParts.push(currentFunctionFactoryString);
+    if (currentFunctionFactoryString && currentFunctionFactoryString.trim() !== "") {
+      functionDefinitions.push(currentFunctionFactoryString);
+    }
     functionFactoryNames.push(functionName);
 
     if (reactQueryEnabled && packageConfig.generateHooks) {
@@ -174,11 +172,25 @@ export async function generateFilesForTag(
     }
   }
 
-  let functionsContent = "";
-  if (anyFunctionNeedsTypesImport) {
-    functionsFileParts.splice(3, 0, `import * as ${tagImportName} from './types';\n\n`); // Insert after SGSyncRequester import
+  let importsAddedToFunctionsPreamble = false;
+  if (functionFactoryNames.length > 0) {
+    functionsFilePreamble.push(`// Imports for the requester mechanism\n`);
+    functionsFilePreamble.push(
+      `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`
+    );
+    importsAddedToFunctionsPreamble = true;
   }
-  functionsContent = functionsFileParts.join("");
+
+  if (anyFunctionNeedsTypesImport) {
+    functionsFilePreamble.push(`import * as ${tagImportName} from './types';\n`);
+    importsAddedToFunctionsPreamble = true;
+  }
+
+  if (importsAddedToFunctionsPreamble) {
+    functionsFilePreamble.push(`\n`);
+  }
+
+  const functionsContent = [...functionsFilePreamble, ...functionDefinitions].join("\n");
 
   let hooksContent = "";
   if (reactQueryEnabled && hooksGenerated) {
@@ -186,7 +198,6 @@ export async function generateFilesForTag(
     let finalHooksImports = `// Imports for the requester mechanism and TanStack Query\n`;
     finalHooksImports += `import { SGSyncRequester, SGSyncRequesterOptions, SGSyncResponse } from 'sg-schema-sync/requester-types';\n`;
     if (anyHookNeedsTypesImport) {
-      // Use the new flag here
       finalHooksImports += `import * as ${tagImportName} from './types';\n`;
     }
 
