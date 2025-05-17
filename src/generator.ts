@@ -220,7 +220,7 @@ export async function generateFilesForTag(
 
     const tanstackImports: string[] = [];
     if (hasGeneratedQueryHooks) {
-      tanstackImports.push("QueryKey", "QueryFunctionContext", "useQuery", "UseQueryOptions");
+      tanstackImports.push("QueryFunctionContext", "useQuery", "UseQueryOptions");
     }
     if (hasGeneratedMutationHooks) {
       tanstackImports.push("useMutation", "UseMutationOptions");
