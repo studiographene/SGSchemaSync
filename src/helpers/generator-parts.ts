@@ -235,7 +235,7 @@ export function _generateFunctionFactory(
 
   const urlPath = processedPath.replace(/{([^}]+)}/g, (_match, paramNameInPath) => {
     const sanitizedParamName = toTsIdentifier(paramNameInPath);
-    return `\\\${${sanitizedParamName}}`; // Corrected template literal placeholder
+    return `\${${sanitizedParamName}}`; // Corrected template literal placeholder
   });
 
   const warnings: string[] = [];
