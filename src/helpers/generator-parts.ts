@@ -354,16 +354,11 @@ export function _generateHookFactory(
   // The actual function called by the mutation will handle separating these.
 
   let defaultMutationTVariables = "void";
-  if (actualRequestBodyTypeName && actualParametersTypeName) {
-    // Need a way to combine these. For now, let's assume request body is primary for TVariables.
-    // A more robust solution might generate a specific combined type if both exist.
-    defaultMutationTVariables = defaultRequestBodyType; // Or a combined type
-  } else if (actualRequestBodyTypeName) {
+  if (actualRequestBodyTypeName) {
     defaultMutationTVariables = defaultRequestBodyType;
-  } else if (actualParametersTypeName) {
-    defaultMutationTVariables = defaultQueryParamsType;
   }
-  // if pathParams are also part of variables, that needs more complex handling for TVariables type
+  // Note: For mutations, query parameters are handled separately from TVariables
+  // TVariables should only represent the request body, not query parameters
 
   // Path parameters signature part for the hook factory (e.g., "id: string, categoryId: string")
   const pathParamsForFactorySignatureList = pathParams.map((p) => `${toTsIdentifier(p.name)}: string`);
@@ -389,9 +384,8 @@ export function _generateHookFactory(
     hookGenerics.push(`TData = ${defaultMutationTData}`);
     hookGenerics.push(`TError = Error`);
     hookGenerics.push(`TVariables = ${defaultMutationTVariables}`);
-    // If a mutation has both request body and query params, TQueryParams is a separate generic for the hook.
-    // TVariables will map to the request body by default in this scenario.
-    if (actualRequestBodyTypeName && actualParametersTypeName) {
+    // If a mutation has query params, add TQueryParams generic
+    if (actualParametersTypeName) {
       hookGenerics.push(`TQueryParams = ${defaultQueryParamsType}`);
     }
 
@@ -402,6 +396,11 @@ export function _generateHookFactory(
       mutationHookParams.push(
         `pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`
       );
+    }
+
+    // If mutation has query parameters, add queryParams parameter
+    if (actualParametersTypeName) {
+      mutationHookParams.push(`queryParams: TQueryParams`);
     }
 
     // Add mutation options (always optional for backward compatibility)
@@ -422,6 +421,7 @@ export function _generateHookFactory(
         return sgFunction({ 
           pathParams: ${pathParams.length > 0 ? `pathParams` : `{}`},
           ${actualRequestBodyTypeName ? `data: variables,` : ""}
+          ${actualParametersTypeName ? `queryParams,` : ""}
           requesterFlags
         });
       },
