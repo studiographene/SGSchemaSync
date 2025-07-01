@@ -436,7 +436,7 @@ export function _generateHookFactory(
       sgFunctionCallParts.length > 0 ? `\n          ${sgFunctionCallParts.join(",\n          ")}\n        ` : "";
 
     reactQueryHookBlock = `
-    const { ${pathParams.map((p) => toTsIdentifier(p.name)).join(", ")}${pathParams.length > 0 && actualRequestBodyTypeName && actualParametersTypeName ? ", " : ""}${actualRequestBodyTypeName && actualParametersTypeName ? "queryParams" : ""}${pathParams.length > 0 || (actualRequestBodyTypeName && actualParametersTypeName) ? ", " : ""}requesterFlags, mutationOptions } = options;
+    const { ${pathParams.length > 0 ? "pathParams, " : ""}${actualRequestBodyTypeName && actualParametersTypeName ? "queryParams, " : ""}requesterFlags, mutationOptions } = options;
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
     return useMutation<TData, TError, TVariables>({ 
       mutationFn: async (${defaultMutationTVariables !== "void" ? "variables: TVariables" : ""}) => {
@@ -490,7 +490,12 @@ export function _generateHookFactory(
         : "";
 
     // 4. Define the runtime queryKey variable BEFORE it's used in queryOptions type
-    const runtimeQueryKeyParts = [...baseQueryKeyParts, ...pathParamArgsForSgFunction];
+    const runtimeQueryKeyParts = [...baseQueryKeyParts];
+    if (pathParams.length > 0) {
+      pathParams.forEach((p) => {
+        runtimeQueryKeyParts.push(`pathParams.${toTsIdentifier(p.name)}`);
+      });
+    }
     if (actualParametersTypeName) {
       // queryParams is a required parameter for the hook if actualParametersTypeName is true
       runtimeQueryKeyParts.push(`queryParams`);
@@ -506,13 +511,13 @@ export function _generateHookFactory(
 
     // 5. The useQuery call
     reactQueryHookBlock = `
-    const { ${pathParams.map((p) => toTsIdentifier(p.name)).join(", ")}${pathParams.length > 0 && actualParametersTypeName ? ", " : ""}${actualParametersTypeName ? "queryParams" : ""}${pathParams.length > 0 || actualParametersTypeName ? ", " : ""}requesterFlags, queryOptions } = options;
+    const { ${pathParams.length > 0 ? "pathParams, " : ""}${actualParametersTypeName ? "queryParams, " : ""}requesterFlags, queryOptions } = options;
     ${queryKeyDefinition} 
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
     const queryFn = async (context: QueryFunctionContext<${specificQueryKeyTypeName}>) => { // Define queryFn separately for clarity, include context
       // context.queryKey, context.signal etc. are available here if needed by sgFunction
       return sgFunction({ 
-        ${pathParams.length > 0 ? `pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}`).join(", ")} },` : ""}
+        ${pathParams.length > 0 ? `pathParams,` : ""}
         ${actualParametersTypeName ? `queryParams,` : ""}
         requesterFlags
       });
