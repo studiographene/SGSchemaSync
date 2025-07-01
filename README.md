@@ -213,7 +213,7 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
 ### 2. `functions.ts` (per tag - Core Factories)
 *   Exports **factory functions** for each API operation, e.g., `export const createGetUserByIdFunction = (requester: SGSyncRequester) => { /* returns async func */ };`
 *   Each factory takes an `SGSyncRequester` argument.
-*   The returned async function (e.g., `getUserById`) is **generic**, allowing for type overrides (see "Type Overriding with Generics" below). It takes an options object with `pathParams`, `data` (if applicable), `queryParams` (if applicable), `requesterFlags`, and `callSpecificOptions`. It constructs `SGSyncRequesterOptions` (including `authRequired: boolean` derived from your OpenAPI spec's `security` definitions) and calls the provided `requester`.
+*   The returned async function (e.g., `getUserById`) is **generic**, allowing for type overrides (see "Type Overriding with Generics" below). It takes path parameters, data (if applicable), query params (if applicable), and `callSpecificOptions`. It constructs `SGSyncRequesterOptions` (including `authRequired: boolean` derived from your OpenAPI spec's `security` definitions) and calls the provided `requester`.
 *   The returned function's promise resolves with an `SGSyncResponse<ResponseType>`.
 *   **`SGSyncRequester`, `SGSyncRequesterOptions`, `SGSyncResponse`**: These crucial types define the contract for the requester mechanism. They are exported by the `sg-schema-sync` package (or available locally if you copy them) for you to implement a custom requester or understand the default one.
 
@@ -223,75 +223,8 @@ Contains TypeScript interfaces for request bodies, path/query parameters, and re
 *   Each factory takes an `SGSyncRequester`.
 *   The returned hook is **generic** (see "Type Overriding with Generics" below). It internally uses the corresponding function factory (e.g., `createGetUserByIdFunction`) to get an API call function, then uses it in `queryFn` or `mutationFn`.
 *   The hook typically extracts the `.data` property from the `SGSyncResponse` for convenience in `useQuery` or provides the full `SGSyncResponse` for mutations.
-*   Hooks accept a `requesterFlags` parameter to pass custom configuration to the underlying requester.
 
-### 4. Requester Flags System
-
-SGSchema-Sync provides a flexible **requester flags** system that allows you to pass custom configuration options from your API calls down to your requester implementation. This enables powerful customization without modifying the generated code.
-
-#### How It Works
-
-1. **In Generated Functions**: All generated API functions accept an optional `requesterFlags` parameter:
-   ```typescript
-   const result = await getUserById({
-     pathParams: { userId: '123' },
-     queryParams: { include: ['profile', 'settings'] },
-     requesterFlags: { useCommaSeparatedParams: true, timeout: 5000 }
-   });
-   ```
-
-2. **In Generated Hooks**: All generated React Query hooks also accept `requesterFlags`:
-   ```typescript
-   const { data } = useGetUsers({
-     queryParams: { groupIds: ['a', 'b', 'c'] },
-     requesterFlags: { useCommaSeparatedParams: true },
-     queryOptions: { staleTime: 60000 }
-   });
-   ```
-
-3. **In Your Requester**: The flags are passed to your requester via the `context.requesterFlags` property:
-   ```typescript
-   export const myCustomRequester: SGSyncRequester = {
-     async request(options) {
-       const { method, url, params, context } = options;
-       const { requesterFlags = {} } = context || {};
-
-       // Handle custom flags
-       if (method === 'GET' && params && requesterFlags.useCommaSeparatedParams) {
-         // Custom array parameter serialization
-         const queryParts = [];
-         for (const [key, value] of Object.entries(params)) {
-           if (Array.isArray(value)) {
-             queryParts.push(`${key}=${value.join(',')}`);
-           } else {
-             queryParts.push(`${key}=${value}`);
-           }
-         }
-         url += `?${queryParts.join('&')}`;
-       }
-
-       if (requesterFlags.timeout) {
-         // Apply custom timeout
-         // ... timeout logic
-       }
-
-       // ... rest of your requester logic
-     }
-   };
-   ```
-
-#### Common Use Cases
-
-- **Parameter Serialization**: Control how array query parameters are serialized (`useCommaSeparatedParams`, `useRepeatParams`, etc.)
-- **Request Timeouts**: Set per-request timeouts (`timeout: 5000`)
-- **Retry Logic**: Enable/disable retries (`enableRetries: true`, `maxRetries: 3`)
-- **Caching**: Control caching behavior (`bypassCache: true`, `cacheTimeout: 300`)
-- **Authentication**: Override auth behavior (`skipAuth: true`, `useServiceAccount: true`)
-- **Request Transformation**: Apply custom transformations (`compressRequest: true`, `encryptSensitiveData: true`)
-
-This system provides maximum flexibility while keeping the generated code clean and maintainable.
-
-### 5. `<tag>/client.ts` (Per-Tag Orchestrator Module)
+### 4. `<tag>/client.ts` (Per-Tag Orchestrator Module)
 *   This file is **auto-generated and always overwritten on each run**. Do not edit it directly. Its basename is configurable via `generatedClientModuleBasename` (default: `client`).
 *   **Purpose:** To provide ready-to-use API functions and hooks, instantiated with the chosen requester. These instantiated functions and hooks are **generic**, inheriting their generic parameters from the factories.
 *   **Imports:**
@@ -308,7 +241,7 @@ This system provides maximum flexibility while keeping the generated code clean 
 *   **Instantiates Factories:** It calls all imported factory functions/hooks with the `requester` instance.
 *   **Exports:** Exports the concrete, ready-to-use API functions (e.g., `export const GetUserById = createGetUserByIdFunction(requester);`) and hooks (e.g., `export const useGetUserById = createUseGetUserByIdHook(requester);`). These exported items are generic, allowing for type overrides.
 
-### 6. `schema-sync-requester.ts` (Custom Requester File - User Owned)
+### 5. `schema-sync-requester.ts` (Custom Requester File - User Owned)
 *(Relevant only if `useDefaultRequester: false`. Default path: `<outputDir>/schema-sync-requester.ts`, configurable via `customRequesterConfig.filePath`)*
 *   **Scaffolding:** If `scaffoldRequesterAdapter: true` (default) and this file does not already exist, a lean scaffold is generated. It will now provide an object structure.
     ```typescript
@@ -543,10 +476,7 @@ Default types for `TResponse`, `TRequestBody`, `TQueryData`, `TVariables`, etc.,
 
     async function fetchUserData(id: string) {
       try {
-        const response = await GetUserById({ 
-          pathParams: { userId: id },
-          requesterFlags: { useCommaSeparatedParams: true } // Example of using requester flags
-        });
+        const response = await GetUserById({ pathParams: { userId: id } }); // Parameters are now objects
         if (response.status === 200) {
           const user: GetUserByIdTypes_Response = response.data; // Assuming this is the structure
           console.log('User:', user);
@@ -560,12 +490,10 @@ Default types for `TResponse`, `TRequestBody`, `TQueryData`, `TVariables`, etc.,
     }
 
     function UserProfile({ userId }: { userId: string }) {
-      const { data: user, isLoading, error } = useGetUserById({ 
-        pathParams: { userId },
-        requesterFlags: { timeout: 5000 } // Example of using requester flags in hooks
-      }); 
-      // ... render logic ...
-    }
+      // Pass params as an object: { pathParams: { userId }, queryParams: { ... } }
+      const { data: user, isLoading, error } = useGetUserById({ pathParams: { userId } }); 
+  // ... render logic ...
+}
 ```
 
 ### Scenario 2: Using a Custom Requester

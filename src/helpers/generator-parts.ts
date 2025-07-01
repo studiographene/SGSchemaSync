@@ -229,13 +229,14 @@ export function _generateFunctionFactory(
   const callSpecificOptionsType = `Partial<Omit<SGSyncRequesterOptions<TRequestBody, TQueryParams>, ${callSpecificOptionsOmitParts}>>`;
 
   innerFuncParamsList.push(`callSpecificOptions?: ${callSpecificOptionsType}`);
+  innerFuncParamsList.push(`customFlags?: Record<string, any>`);
 
   const innerFuncParamsString =
     innerFuncParamsList.length > 0 ? `\n    ${innerFuncParamsList.join(",\n    ")}\n  ` : "";
 
   const urlPath = processedPath.replace(/{([^}]+)}/g, (_match, paramNameInPath) => {
     const sanitizedParamName = toTsIdentifier(paramNameInPath);
-    return `\${pathParams.${sanitizedParamName}}`; // Fixed: use pathParams.paramName
+    return `\${${sanitizedParamName}}`; // Corrected template literal placeholder
   });
 
   const warnings: string[] = [];
@@ -262,49 +263,36 @@ export function _generateFunctionFactory(
     .map((line) => `   * ${line}`)
     .join("\n");
 
-  return `
-${operationGroupBanner}
-export const ${functionFactoryName} = <
-  TResponse = ${defaultResponseType},
-  TRequestBody = ${defaultRequestBodyType},
-  TQueryParams = ${defaultQueryParamsType}
->(requester: SGSyncRequester) => {
+  return `${warningBlock}${operationGroupBanner}
+export function ${functionFactoryName}(requester: SGSyncRequester) {
   /**
-   * ${summary}
-   * @param options - The options for the request.
-   * @param options.pathParams - Path parameters for the request.
-   * @param options.data - Request body.
-   * @param options.queryParams - Query parameters.
-   * @param options.requesterFlags - Custom flags to pass to the requester.
-   * @param options.callSpecificOptions - Additional options for the request.
+${indentedSummary}
    */
-  return async (
-    options: {
-      pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} };
-      ${actualRequestBodyTypeName ? `data: TRequestBody;` : ""}
-      ${actualParametersTypeName ? `queryParams: TQueryParams;` : ""}
-      requesterFlags?: Record<string, any>;
-      callSpecificOptions?: ${callSpecificOptionsType};
-    }
-  ) => {
-    const { pathParams, ${actualRequestBodyTypeName ? "data, " : ""}${
-      actualParametersTypeName ? "queryParams, " : ""
-    }requesterFlags, callSpecificOptions } = options;
-              const url = \`${urlPath}\`;
-     ${warningBlock}
-    return requester.request<TResponse, TRequestBody, TQueryParams>({
+  return async <
+    TResponse = ${defaultResponseType},
+    TRequestBody = ${defaultRequestBodyType},
+    TQueryParams = ${defaultQueryParamsType}
+  >(${innerFuncParamsString}): Promise<TResponse> => {
+    const response = await requester.request<TResponse, TRequestBody>({
       method: '${method.toUpperCase()}',
-      url,
-      ${actualRequestBodyTypeName ? `data,` : ""}
-      ${actualParametersTypeName ? `params: queryParams,` : ""}
-      authRequire: ${authRequire},
-      context: {
-        requesterFlags: requesterFlags || {}
-      },
-      ...callSpecificOptions
+      url: \`${urlPath}\`,
+      authRequire: ${authRequire},${
+        actualRequestBodyTypeName
+          ? `
+      data,`
+          : ""
+      }${
+        actualParametersTypeName
+          ? `
+      params,`
+          : ""
+      }
+      context: customFlags,
+      ...(callSpecificOptions || {}),
     });
-  }
-};
+${defaultResponseType === "void" ? "    return undefined as TResponse; // Explicitly return undefined cast to TResponse" : "    return response.data;"}
+  };
+}
 `;
 }
 
@@ -354,11 +342,16 @@ export function _generateHookFactory(
   // The actual function called by the mutation will handle separating these.
 
   let defaultMutationTVariables = "void";
-  if (actualRequestBodyTypeName) {
+  if (actualRequestBodyTypeName && actualParametersTypeName) {
+    // Need a way to combine these. For now, let's assume request body is primary for TVariables.
+    // A more robust solution might generate a specific combined type if both exist.
+    defaultMutationTVariables = defaultRequestBodyType; // Or a combined type
+  } else if (actualRequestBodyTypeName) {
     defaultMutationTVariables = defaultRequestBodyType;
+  } else if (actualParametersTypeName) {
+    defaultMutationTVariables = defaultQueryParamsType;
   }
-  // Note: For mutations, query parameters are handled separately from TVariables
-  // TVariables should only represent the request body, not query parameters
+  // if pathParams are also part of variables, that needs more complex handling for TVariables type
 
   // Path parameters signature part for the hook factory (e.g., "id: string, categoryId: string")
   const pathParamsForFactorySignatureList = pathParams.map((p) => `${toTsIdentifier(p.name)}: string`);
@@ -384,46 +377,75 @@ export function _generateHookFactory(
     hookGenerics.push(`TData = ${defaultMutationTData}`);
     hookGenerics.push(`TError = Error`);
     hookGenerics.push(`TVariables = ${defaultMutationTVariables}`);
-    // If a mutation has query params, add TQueryParams generic
-    if (actualParametersTypeName) {
+    // If a mutation has both request body and query params, TQueryParams is a separate generic for the hook.
+    // TVariables will map to the request body by default in this scenario.
+    if (actualRequestBodyTypeName && actualParametersTypeName) {
       hookGenerics.push(`TQueryParams = ${defaultQueryParamsType}`);
     }
 
-    const mutationHookParams: string[] = [];
-
-    if (pathParams.length > 0) {
-      // Add pathParams as first parameter if needed
-      mutationHookParams.push(
-        `pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`
-      );
+    const mutationHookParams: string[] = []; // Parameters for the hook factory itself
+    if (pathParamsForFactorySignatureString) {
+      mutationHookParams.push(pathParamsForFactorySignatureString);
     }
-
-    // If mutation has query parameters, add queryParams parameter
-    if (actualParametersTypeName) {
+    // If the operation takes both body and query, the hook factory needs to accept queryParams separately
+    // because TVariables will be for the request body.
+    if (actualRequestBodyTypeName && actualParametersTypeName) {
       mutationHookParams.push(`queryParams: TQueryParams`);
     }
 
-    // Add mutation options (always optional for backward compatibility)
     mutationHookParams.push(
       `mutationOptions?: Omit<UseMutationOptions<TData, TError, TVariables, unknown>, 'mutationFn'>`
     );
-
-    // Add requester flags as third parameter (optional)
-    mutationHookParams.push(`requesterFlags?: Record<string, any>`);
-
+    mutationHookParams.push(`customFlags?: Record<string, any>`);
     optionsAndHookParamsString = mutationHookParams.length > 0 ? `\n    ${mutationHookParams.join(",\n    ")}\n  ` : "";
 
-    // The useMutation call
+    // const mutationQueryKeyParts = [...baseQueryKeyParts, "'mutation'"]; // Not used directly for mutationFn call
+    // const queryKeyDefinition = `const queryKey = [${mutationQueryKeyParts.join(", ")}] as const;`; // Not used for mutationFn
+
+    // Arguments for the actual mutationFn: (variables: TVariables) => { ... }
+    const mutationFnExecutionParams: string[] = [];
+    if (defaultMutationTVariables !== "void") {
+      mutationFnExecutionParams.push(`variables: TVariables`);
+    }
+
+    // Arguments to pass to the underlying sgFunction from within mutationFn
+    sgFunctionCallArgs = [...pathParamArgsForSgFunction]; // Start with path parameters
+
+    // Argument for 'data' parameter of sgFunction
+    if (actualRequestBodyTypeName) {
+      // sgFunction expects 'data'
+      // 'variables' from mutationFn (of type TVariables) is used for 'data'.
+      // This is correct because TVariables defaults to defaultRequestBodyType
+      // if there's a request body.
+      sgFunctionCallArgs.push("variables");
+    }
+    // If actualRequestBodyTypeName is null, sgFunction does NOT expect a 'data' param, so nothing is added.
+
+    // Argument for 'params' parameter of sgFunction
+    if (actualParametersTypeName) {
+      // sgFunction expects 'params'
+      if (actualRequestBodyTypeName) {
+        // sgFunction also expected 'data'. 'TVariables' was for 'data'.
+        // Hook has a separate TQueryParams generic, and 'queryParams' parameter in factory.
+        sgFunctionCallArgs.push("queryParams");
+      } else {
+        // sgFunction did NOT expect 'data'. 'TVariables' is for 'params'.
+        sgFunctionCallArgs.push("variables");
+      }
+    }
+    // If actualParametersTypeName is null, sgFunction does NOT expect a 'params' param, so nothing is added.
+
+    // Add customFlags to the end of the arguments
+    sgFunctionCallArgs.push("undefined"); // callSpecificOptions placeholder
+    sgFunctionCallArgs.push("customFlags");
+
+    const finalSgFunctionCallArgsString = sgFunctionCallArgs.join(", ");
+
     reactQueryHookBlock = `
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
-    return useMutation<TData, TError, TVariables>({
-      mutationFn: async (${actualRequestBodyTypeName ? "variables: TVariables" : ""}) => {
-        return sgFunction({ 
-          pathParams: ${pathParams.length > 0 ? `pathParams` : `{}`},
-          ${actualRequestBodyTypeName ? `data: variables,` : ""}
-          ${actualParametersTypeName ? `queryParams,` : ""}
-          requesterFlags
-        });
+    return useMutation<TData, TError, TVariables>({ 
+      mutationFn: async (${mutationFnExecutionParams.join(", ")}) => {
+        return sgFunction(${finalSgFunctionCallArgsString});
       },
       ...mutationOptions,
     });`;
@@ -452,46 +474,38 @@ export function _generateHookFactory(
     // This type alias will be part of the string output of _generateHookFactory
     queryKeyTypeAliasDefinition = `type ${specificQueryKeyTypeName} = ${queryKeyTypeString};\n`;
 
-    // Build the options object structure for query hooks - maintaining backward compatibility
-    const queryHookParams: string[] = [];
-
-    // For query hooks, we use a third optional parameter for requesterFlags
-    // Pattern: (pathParams?, queryParams?, queryOptions?, requesterFlags?)
-
-    if (pathParams.length > 0 && actualParametersTypeName) {
-      // Both path and query params
-      queryHookParams.push(`pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`);
-      queryHookParams.push(`queryParams: TQueryParams`);
-    } else if (pathParams.length > 0) {
-      // Only path params
-      queryHookParams.push(`pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`);
-    } else if (actualParametersTypeName) {
-      // Only query params
-      queryHookParams.push(`queryParams: TQueryParams`);
-    }
-
-    // Second parameter: React Query options (optional for backward compatibility)
-    queryHookParams.push(
-      `queryOptions?: Omit<UseQueryOptions<${defaultQueryTData}, TError, TQueryData, ${specificQueryKeyTypeName}>, 'queryKey' | 'queryFn'>`
-    );
-
-    // Third parameter: requester flags (optional)
-    queryHookParams.push(`requesterFlags?: Record<string, any>`);
-
-    optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
-
     // 4. Define the runtime queryKey variable BEFORE it's used in queryOptions type
-    const runtimeQueryKeyParts = [...baseQueryKeyParts];
-    if (pathParams.length > 0) {
-      pathParams.forEach((p) => {
-        runtimeQueryKeyParts.push(`pathParams.${toTsIdentifier(p.name)}`);
-      });
-    }
+    const runtimeQueryKeyParts = [...baseQueryKeyParts, ...pathParamArgsForSgFunction];
     if (actualParametersTypeName) {
       // queryParams is a required parameter for the hook if actualParametersTypeName is true
       runtimeQueryKeyParts.push(`queryParams`);
     }
     const queryKeyDefinition = `const queryKey = [${runtimeQueryKeyParts.join(", ")}] as const;`;
+
+    // 3. Define queryHookParams using typeof queryKey for queryOptions
+    const queryHookParams: string[] = [];
+    if (pathParamsForFactorySignatureString) {
+      queryHookParams.push(pathParamsForFactorySignatureString);
+    }
+    if (actualParametersTypeName) {
+      queryHookParams.push(`queryParams: TQueryParams`);
+    }
+    // Use the specificQueryKeyTypeName for queryOptions type, and align TQueryFnData/TData with the useQuery call
+    queryHookParams.push(
+      `queryOptions?: Omit<UseQueryOptions<${defaultQueryTData}, TError, TQueryData, ${specificQueryKeyTypeName}>, 'queryKey' | 'queryFn'>`
+    );
+    queryHookParams.push(`customFlags?: Record<string, any>`);
+    optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
+
+    // Construct arguments for the sgFunction call within the query
+    let currentSgFunctionCallArgs_Query = [...pathParamArgsForSgFunction];
+    if (actualParametersTypeName) {
+      currentSgFunctionCallArgs_Query.push("queryParams");
+    }
+    // Add customFlags to the end of the arguments
+    currentSgFunctionCallArgs_Query.push("undefined"); // callSpecificOptions placeholder
+    currentSgFunctionCallArgs_Query.push("customFlags");
+    const finalSgFunctionCallArgsString_Query = currentSgFunctionCallArgs_Query.join(", ");
 
     // 5. The useQuery call
     reactQueryHookBlock = `
@@ -499,11 +513,7 @@ export function _generateHookFactory(
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
     const queryFn = async (context: QueryFunctionContext<${specificQueryKeyTypeName}>) => { // Define queryFn separately for clarity, include context
       // context.queryKey, context.signal etc. are available here if needed by sgFunction
-      return sgFunction({ 
-        pathParams: ${pathParams.length > 0 ? `pathParams` : `{}`},
-        ${actualParametersTypeName ? `queryParams,` : ""}
-        requesterFlags
-      });
+      return sgFunction(${finalSgFunctionCallArgsString_Query});
     };
 
     return useQuery<${defaultQueryTData}, TError, TQueryData, ${specificQueryKeyTypeName}>({ // Use specificQueryKeyTypeName here, and correct TQueryFnData vs TData
