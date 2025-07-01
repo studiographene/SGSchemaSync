@@ -395,52 +395,35 @@ export function _generateHookFactory(
       hookGenerics.push(`TQueryParams = ${defaultQueryParamsType}`);
     }
 
-    const mutationHookParams: string[] = []; // Parameters for the hook factory itself
+    const mutationHookParams: string[] = [];
 
-    // Build the options object structure for mutation hooks
-    const optionsObjectParts: string[] = [];
     if (pathParams.length > 0) {
-      optionsObjectParts.push(
+      // Add pathParams as first parameter if needed
+      mutationHookParams.push(
         `pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`
       );
     }
-    if (actualRequestBodyTypeName && actualParametersTypeName) {
-      optionsObjectParts.push(`queryParams: TQueryParams`);
-    }
-    optionsObjectParts.push(`requesterFlags?: Record<string, any>`);
-    optionsObjectParts.push(
+
+    // Add mutation options (always optional for backward compatibility)
+    mutationHookParams.push(
       `mutationOptions?: Omit<UseMutationOptions<TData, TError, TVariables, unknown>, 'mutationFn'>`
     );
 
-    optionsAndHookParamsString =
-      optionsObjectParts.length > 0
-        ? `\n    options: {\n      ${optionsObjectParts.join(";\n      ")};\n    }\n  `
-        : "";
+    // Add requester flags as third parameter (optional)
+    mutationHookParams.push(`requesterFlags?: Record<string, any>`);
 
-    // Arguments for sgFunction call within mutationFn
-    const sgFunctionCallParts: string[] = [];
-    if (pathParams.length > 0) {
-      sgFunctionCallParts.push(`pathParams`);
-    }
-    if (actualRequestBodyTypeName) {
-      sgFunctionCallParts.push(`data: variables`);
-    }
-    if (actualParametersTypeName && actualRequestBodyTypeName) {
-      sgFunctionCallParts.push(`queryParams`);
-    } else if (actualParametersTypeName) {
-      sgFunctionCallParts.push(`queryParams: variables`);
-    }
-    sgFunctionCallParts.push(`requesterFlags`);
+    optionsAndHookParamsString = mutationHookParams.length > 0 ? `\n    ${mutationHookParams.join(",\n    ")}\n  ` : "";
 
-    const sgFunctionCallString =
-      sgFunctionCallParts.length > 0 ? `\n          ${sgFunctionCallParts.join(",\n          ")}\n        ` : "";
-
+    // The useMutation call
     reactQueryHookBlock = `
-    const { ${pathParams.length > 0 ? "pathParams, " : ""}${actualRequestBodyTypeName && actualParametersTypeName ? "queryParams, " : ""}requesterFlags, mutationOptions } = options;
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
-    return useMutation<TData, TError, TVariables>({ 
-      mutationFn: async (${defaultMutationTVariables !== "void" ? "variables: TVariables" : ""}) => {
-        return sgFunction({${sgFunctionCallString}});
+    return useMutation<TData, TError, TVariables>({
+      mutationFn: async (${actualRequestBodyTypeName ? "variables: TVariables" : ""}) => {
+        return sgFunction({ 
+          ${pathParams.length > 0 ? `pathParams,` : ""}
+          ${actualRequestBodyTypeName ? `data: variables,` : ""}
+          requesterFlags
+        });
       },
       ...mutationOptions,
     });`;
@@ -469,25 +452,33 @@ export function _generateHookFactory(
     // This type alias will be part of the string output of _generateHookFactory
     queryKeyTypeAliasDefinition = `type ${specificQueryKeyTypeName} = ${queryKeyTypeString};\n`;
 
-    // Build the options object structure for query hooks
-    const queryOptionsObjectParts: string[] = [];
-    if (pathParams.length > 0) {
-      queryOptionsObjectParts.push(
-        `pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`
-      );
+    // Build the options object structure for query hooks - maintaining backward compatibility
+    const queryHookParams: string[] = [];
+
+    // For query hooks, we use a third optional parameter for requesterFlags
+    // Pattern: (pathParams?, queryParams?, queryOptions?, requesterFlags?)
+
+    if (pathParams.length > 0 && actualParametersTypeName) {
+      // Both path and query params
+      queryHookParams.push(`pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`);
+      queryHookParams.push(`queryParams: TQueryParams`);
+    } else if (pathParams.length > 0) {
+      // Only path params
+      queryHookParams.push(`pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} }`);
+    } else if (actualParametersTypeName) {
+      // Only query params
+      queryHookParams.push(`queryParams: TQueryParams`);
     }
-    if (actualParametersTypeName) {
-      queryOptionsObjectParts.push(`queryParams: TQueryParams`);
-    }
-    queryOptionsObjectParts.push(`requesterFlags?: Record<string, any>`);
-    queryOptionsObjectParts.push(
+
+    // Second parameter: React Query options (optional for backward compatibility)
+    queryHookParams.push(
       `queryOptions?: Omit<UseQueryOptions<${defaultQueryTData}, TError, TQueryData, ${specificQueryKeyTypeName}>, 'queryKey' | 'queryFn'>`
     );
 
-    optionsAndHookParamsString =
-      queryOptionsObjectParts.length > 0
-        ? `\n    options: {\n      ${queryOptionsObjectParts.join(";\n      ")};\n    }\n  `
-        : "";
+    // Third parameter: requester flags (optional)
+    queryHookParams.push(`requesterFlags?: Record<string, any>`);
+
+    optionsAndHookParamsString = queryHookParams.length > 0 ? `\n    ${queryHookParams.join(",\n    ")}\n  ` : "";
 
     // 4. Define the runtime queryKey variable BEFORE it's used in queryOptions type
     const runtimeQueryKeyParts = [...baseQueryKeyParts];
@@ -502,16 +493,8 @@ export function _generateHookFactory(
     }
     const queryKeyDefinition = `const queryKey = [${runtimeQueryKeyParts.join(", ")}] as const;`;
 
-    // Construct arguments for the sgFunction call within the query
-    let currentSgFunctionCallArgs_Query = [...pathParamArgsForSgFunction];
-    if (actualParametersTypeName) {
-      currentSgFunctionCallArgs_Query.push("queryParams");
-    }
-    const finalSgFunctionCallArgsString_Query = currentSgFunctionCallArgs_Query.join(", ");
-
     // 5. The useQuery call
     reactQueryHookBlock = `
-    const { ${pathParams.length > 0 ? "pathParams, " : ""}${actualParametersTypeName ? "queryParams, " : ""}requesterFlags, queryOptions } = options;
     ${queryKeyDefinition} 
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
     const queryFn = async (context: QueryFunctionContext<${specificQueryKeyTypeName}>) => { // Define queryFn separately for clarity, include context
