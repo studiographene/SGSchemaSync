@@ -420,7 +420,7 @@ export function _generateHookFactory(
     return useMutation<TData, TError, TVariables>({
       mutationFn: async (${actualRequestBodyTypeName ? "variables: TVariables" : ""}) => {
         return sgFunction({ 
-          ${pathParams.length > 0 ? `pathParams,` : ""}
+          pathParams: ${pathParams.length > 0 ? `pathParams` : `{}`},
           ${actualRequestBodyTypeName ? `data: variables,` : ""}
           requesterFlags
         });
@@ -500,7 +500,7 @@ export function _generateHookFactory(
     const queryFn = async (context: QueryFunctionContext<${specificQueryKeyTypeName}>) => { // Define queryFn separately for clarity, include context
       // context.queryKey, context.signal etc. are available here if needed by sgFunction
       return sgFunction({ 
-        ${pathParams.length > 0 ? `pathParams,` : ""}
+        pathParams: ${pathParams.length > 0 ? `pathParams` : `{}`},
         ${actualParametersTypeName ? `queryParams,` : ""}
         requesterFlags
       });
