@@ -262,35 +262,49 @@ export function _generateFunctionFactory(
     .map((line) => `   * ${line}`)
     .join("\n");
 
-  return `${warningBlock}${operationGroupBanner}
-export function ${functionFactoryName}(requester: SGSyncRequester) {
+  return `
+${operationGroupBanner}
+export const ${functionFactoryName} = <
+  TResponse = ${defaultResponseType},
+  TRequestBody = ${defaultRequestBodyType},
+  TQueryParams = ${defaultQueryParamsType}
+>(requester: SGSyncRequester) => {
   /**
-${indentedSummary}
+   * ${summary}
+   * @param options - The options for the request.
+   * @param options.pathParams - Path parameters for the request.
+   * @param options.data - Request body.
+   * @param options.queryParams - Query parameters.
+   * @param options.requesterFlags - Custom flags to pass to the requester.
+   * @param options.callSpecificOptions - Additional options for the request.
    */
-  return async <
-    TResponse = ${defaultResponseType},
-    TRequestBody = ${defaultRequestBodyType},
-    TQueryParams = ${defaultQueryParamsType}
-  >(${innerFuncParamsString}): Promise<TResponse> => {
-    const response = await requester.request<TResponse, TRequestBody>({
+  return async (
+    options: {
+      pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}: string`).join("; ")} };
+      ${actualRequestBodyTypeName ? `data: TRequestBody;` : ""}
+      ${actualParametersTypeName ? `queryParams: TQueryParams;` : ""}
+      requesterFlags?: Record<string, any>;
+      callSpecificOptions?: ${callSpecificOptionsType};
+    }
+  ) => {
+    const { pathParams, ${actualRequestBodyTypeName ? "data, " : ""}${
+      actualParametersTypeName ? "queryParams, " : ""
+    }requesterFlags, callSpecificOptions } = options;
+              const url = \`${urlPath}\`;
+     ${warningBlock}
+    return requester.request<TResponse, TRequestBody, TQueryParams>({
       method: '${method.toUpperCase()}',
-      url: \`${urlPath}\`,
-      authRequire: ${authRequire},${
-        actualRequestBodyTypeName
-          ? `
-      data,`
-          : ""
-      }${
-        actualParametersTypeName
-          ? `
-      params,`
-          : ""
-      }
-      ...(callSpecificOptions || {}),
+      url,
+      ${actualRequestBodyTypeName ? `data,` : ""}
+      ${actualParametersTypeName ? `params: queryParams,` : ""}
+      authRequire: ${authRequire},
+      context: {
+        requesterFlags: requesterFlags || {}
+      },
+      ...callSpecificOptions
     });
-${defaultResponseType === "void" ? "    return undefined as TResponse; // Explicitly return undefined cast to TResponse" : "    return response.data;"}
-  };
-}
+  }
+};
 `;
 }
 
@@ -391,6 +405,7 @@ export function _generateHookFactory(
       mutationHookParams.push(`queryParams: TQueryParams`);
     }
 
+    mutationHookParams.push(`requesterFlags?: Record<string, any>`);
     mutationHookParams.push(
       `mutationOptions?: Omit<UseMutationOptions<TData, TError, TVariables, unknown>, 'mutationFn'>`
     );
@@ -438,7 +453,12 @@ export function _generateHookFactory(
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
     return useMutation<TData, TError, TVariables>({ 
       mutationFn: async (${mutationFnExecutionParams.join(", ")}) => {
-        return sgFunction(${finalSgFunctionCallArgsString});
+        return sgFunction({ 
+          ${pathParams.length > 0 ? `pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}`).join(", ")} },` : ""}
+          ${actualRequestBodyTypeName ? `data: variables,` : ""}
+          ${actualParametersTypeName && actualRequestBodyTypeName ? `queryParams,` : actualParametersTypeName ? `queryParams: variables,` : ""}
+          requesterFlags
+        });
       },
       ...mutationOptions,
     });`;
@@ -483,6 +503,7 @@ export function _generateHookFactory(
     if (actualParametersTypeName) {
       queryHookParams.push(`queryParams: TQueryParams`);
     }
+    queryHookParams.push(`requesterFlags?: Record<string, any>`);
     // Use the specificQueryKeyTypeName for queryOptions type, and align TQueryFnData/TData with the useQuery call
     queryHookParams.push(
       `queryOptions?: Omit<UseQueryOptions<${defaultQueryTData}, TError, TQueryData, ${specificQueryKeyTypeName}>, 'queryKey' | 'queryFn'>`
@@ -502,7 +523,11 @@ export function _generateHookFactory(
     const sgFunction = ${correspondingFunctionFactoryName}(requester);
     const queryFn = async (context: QueryFunctionContext<${specificQueryKeyTypeName}>) => { // Define queryFn separately for clarity, include context
       // context.queryKey, context.signal etc. are available here if needed by sgFunction
-      return sgFunction(${finalSgFunctionCallArgsString_Query});
+      return sgFunction({ 
+        ${pathParams.length > 0 ? `pathParams: { ${pathParams.map((p) => `${toTsIdentifier(p.name)}`).join(", ")} },` : ""}
+        ${actualParametersTypeName ? `queryParams,` : ""}
+        requesterFlags
+      });
     };
 
     return useQuery<${defaultQueryTData}, TError, TQueryData, ${specificQueryKeyTypeName}>({ // Use specificQueryKeyTypeName here, and correct TQueryFnData vs TData

@@ -53,3 +53,9 @@ export interface SGSyncRequester {
     options: SGSyncRequesterOptions<TRequestBody, TQueryParams>
   ) => Promise<SGSyncResponse<TResponseData>>;
 }
+
+export interface SGSyncRequesterContext {
+  [key: string]: any;
+  baseURL?: string;
+  requesterFlags?: Record<string, any>;
+}
