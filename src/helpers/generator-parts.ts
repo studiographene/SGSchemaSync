@@ -181,6 +181,7 @@ export function _generateFunctionFactory(
     ) as OpenAPIV3.ParameterObject[]) || [];
 
   // Default Type Names for Generics
+  const hasRequestBody = !!operation.requestBody;
   let defaultResponseType: string;
   if (primaryResponseTypeName === "void") {
     defaultResponseType = "void";
@@ -190,7 +191,11 @@ export function _generateFunctionFactory(
     defaultResponseType = "any";
   }
 
-  const defaultRequestBodyType = actualRequestBodyTypeName ? `${tagImportName}.${actualRequestBodyTypeName}` : "never";
+  const defaultRequestBodyType = actualRequestBodyTypeName
+    ? `${tagImportName}.${actualRequestBodyTypeName}`
+    : hasRequestBody
+      ? "any"
+      : "never";
   const defaultQueryParamsType = actualParametersTypeName ? `${tagImportName}.${actualParametersTypeName}` : "never";
 
   let needsTypesImport = false;
@@ -208,7 +213,7 @@ export function _generateFunctionFactory(
 
   const innerFuncParamsList: string[] = [...pathParamsForInnerFuncSignature];
 
-  if (actualRequestBodyTypeName) {
+  if (hasRequestBody) {
     innerFuncParamsList.push(`data: TRequestBody`);
   }
   if (actualParametersTypeName) {
@@ -220,7 +225,7 @@ export function _generateFunctionFactory(
 
   // Constructing callSpecificOptionsType carefully to avoid including 'data' or 'params' if not applicable
   let callSpecificOptionsOmitParts = "'method' | 'url' | 'authRequire'";
-  if (actualRequestBodyTypeName) {
+  if (hasRequestBody) {
     callSpecificOptionsOmitParts += " | 'data'";
   }
   if (actualParametersTypeName) {
@@ -277,7 +282,7 @@ ${indentedSummary}
       method: '${method.toUpperCase()}',
       url: \`${urlPath}\`,
       authRequire: ${authRequire},${
-        actualRequestBodyTypeName
+        hasRequestBody
           ? `
       data,`
           : ""
@@ -321,6 +326,9 @@ export function _generateHookFactory(
 
   let queryKeyTypeAliasDefinition = ""; // Initialize here
 
+  // Determine if the operation actually has a request body (even if type generation failed)
+  const hasRequestBody = !!opInfo.operation.requestBody;
+
   // Default Type Names for Generics
   let defaultResponseType: string;
   if (primaryResponseTypeName === "void") {
@@ -331,7 +339,11 @@ export function _generateHookFactory(
     defaultResponseType = "any";
   }
 
-  const defaultRequestBodyType = actualRequestBodyTypeName ? `${tagImportName}.${actualRequestBodyTypeName}` : "never";
+  const defaultRequestBodyType = actualRequestBodyTypeName
+    ? `${tagImportName}.${actualRequestBodyTypeName}`
+    : hasRequestBody
+      ? "any"
+      : "never";
   const defaultQueryParamsType = actualParametersTypeName ? `${tagImportName}.${actualParametersTypeName}` : "never";
 
   // React Query specific types
@@ -342,11 +354,11 @@ export function _generateHookFactory(
   // The actual function called by the mutation will handle separating these.
 
   let defaultMutationTVariables = "void";
-  if (actualRequestBodyTypeName && actualParametersTypeName) {
+  if (hasRequestBody && actualParametersTypeName) {
     // Need a way to combine these. For now, let's assume request body is primary for TVariables.
     // A more robust solution might generate a specific combined type if both exist.
     defaultMutationTVariables = defaultRequestBodyType; // Or a combined type
-  } else if (actualRequestBodyTypeName) {
+  } else if (hasRequestBody) {
     defaultMutationTVariables = defaultRequestBodyType;
   } else if (actualParametersTypeName) {
     defaultMutationTVariables = defaultQueryParamsType;
@@ -379,7 +391,7 @@ export function _generateHookFactory(
     hookGenerics.push(`TVariables = ${defaultMutationTVariables}`);
     // If a mutation has both request body and query params, TQueryParams is a separate generic for the hook.
     // TVariables will map to the request body by default in this scenario.
-    if (actualRequestBodyTypeName && actualParametersTypeName) {
+    if (hasRequestBody && actualParametersTypeName) {
       hookGenerics.push(`TQueryParams = ${defaultQueryParamsType}`);
     }
 
@@ -389,7 +401,7 @@ export function _generateHookFactory(
     }
     // If the operation takes both body and query, the hook factory needs to accept queryParams separately
     // because TVariables will be for the request body.
-    if (actualRequestBodyTypeName && actualParametersTypeName) {
+    if (hasRequestBody && actualParametersTypeName) {
       mutationHookParams.push(`queryParams: TQueryParams`);
     }
 
@@ -412,7 +424,7 @@ export function _generateHookFactory(
     sgFunctionCallArgs = [...pathParamArgsForSgFunction]; // Start with path parameters
 
     // Argument for 'data' parameter of sgFunction
-    if (actualRequestBodyTypeName) {
+    if (hasRequestBody) {
       // sgFunction expects 'data'
       // 'variables' from mutationFn (of type TVariables) is used for 'data'.
       // This is correct because TVariables defaults to defaultRequestBodyType
@@ -424,7 +436,7 @@ export function _generateHookFactory(
     // Argument for 'params' parameter of sgFunction
     if (actualParametersTypeName) {
       // sgFunction expects 'params'
-      if (actualRequestBodyTypeName) {
+      if (hasRequestBody) {
         // sgFunction also expected 'data'. 'TVariables' was for 'data'.
         // Hook has a separate TQueryParams generic, and 'queryParams' parameter in factory.
         sgFunctionCallArgs.push("queryParams");
