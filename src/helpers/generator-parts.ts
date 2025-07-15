@@ -602,7 +602,10 @@ function filterAndPrefixDeclarations(
         // Replace declaration line name in buffer
         const updatedLine = line.replace(currentName, prefixed);
         buffer.push(updatedLine);
-        // Replace all subsequent occurrences within buffer so far
+        // Update previously processed resultLines as well
+        for (let i = 0; i < resultLines.length; i++) {
+          resultLines[i] = resultLines[i].replace(new RegExp(`\\b${currentName}\\b`, "g"), prefixed);
+        }
         for (let i = 0; i < buffer.length - 1; i++) {
           buffer[i] = buffer[i].replace(new RegExp(`\\b${currentName}\\b`, "g"), prefixed);
         }
