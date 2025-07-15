@@ -95,7 +95,14 @@ export async function generateFilesForTag(
       parametersTypeFailed,
       responseTypeFailed,
       primaryResponseTypeGenerated,
-    } = await _generateOperationTypes(opInfo, typeBaseNameForOperation, tagName, generatedTypeNames, spec);
+    } = await _generateOperationTypes(
+      opInfo,
+      typeBaseNameForOperation,
+      tagName,
+      generatedTypeNames,
+      spec,
+      packageConfig
+    );
     typesContent += operationTypesString;
 
     // Check if this operation necessitates importing from ./types

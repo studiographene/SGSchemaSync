@@ -233,6 +233,8 @@ async function main() {
     scaffoldRequesterAdapter: mergedConfig.scaffoldRequesterAdapter ?? baseDefaultConfig.scaffoldRequesterAdapter!,
     stripPathPrefix: mergedConfig.stripPathPrefix,
     verbose: mergedConfig.verbose ?? baseDefaultConfig.verbose!,
+    operationTypePrefix: mergedConfig.operationTypePrefix ?? baseDefaultConfig.operationTypePrefix,
+    schemaTypePrefix: mergedConfig.schemaTypePrefix ?? baseDefaultConfig.schemaTypePrefix ?? "SSGEN_",
     defaultRequesterConfig: undefined, // Initialize, will be set if useDefaultRequester is true
   };
 

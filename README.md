@@ -107,6 +107,8 @@ pnpm sg-schema-sync -i <path_or_url_to_openapi_spec> -o ./src/api/generated
 *   `--default-requester-token-export-name <name>`: (Optional) Specifies the export name of your `getToken` function. Defaults to `getToken`. Overrides `defaultRequesterConfig.getTokenExportName` in the config file.
 *   `--generated-client-module-basename <name>`: (Optional) Basename for the auto-generated per-tag client orchestrator module (e.g., `client` would result in `users/client.ts`). Defaults to `client`. Overrides `generatedClientModuleBasename` in the config file.
 *   `--strip-path-prefix <prefix>`: (Optional) A string prefix to strip from the beginning of all paths obtained from the OpenAPI specification before they are used for generating runtime request paths and influencing generated names (like hook names or query keys if they are path-based). For example, if your OpenAPI paths are `/api/users` and you provide `--strip-path-prefix /api`, the generated path constants will be `/users`. Type names (e.g., `_Request`, `_Response` types) will still be based on the original, unstripped path to maintain naming consistency. Defaults to no prefix stripping. Overrides `stripPathPrefix` in the config file.
+*   `operationTypePrefix?: string`: (Default: none) Optional prefix prepended to every *operation-specific* type that the generator creates (e.g. `GetUsers_Request`, `PostPets_Response_201`).  Provide a short Pascal-case string; if omitted, the old names are preserved.
+*   `schemaTypePrefix?: string`: (Default: `SSGEN_`) Prefix prepended to every auxiliary type that originates from `$ref` schemas (interfaces like `UserRoleInfo`, enums, etc.).  This prevents clashes when multiple specs are compiled inside the same code-base.
 
 ## Configuration File (`sg-schema-sync.config.js`)
 
@@ -137,6 +139,8 @@ It should export a `config` object: `module.exports = { config: { /* ... */ } };
 *   `formatWithPrettier: boolean`: (Default: `true`) Whether to format the generated output files using Prettier.
 *   `prettierConfigPath: string | undefined`: (Default: `undefined`) Path to a custom Prettier configuration file.
 *   `stripPathPrefix: string | undefined`: (Default: `undefined`) Optional string prefix to strip from paths.
+*   `operationTypePrefix?: string`: (Default: none) Optional prefix prepended to every *operation-specific* type that the generator creates (e.g. `GetUsers_Request`, `PostPets_Response_201`).  Provide a short Pascal-case string; if omitted, the old names are preserved.
+*   `schemaTypePrefix?: string`: (Default: `SSGEN_`) Prefix prepended to every auxiliary type that originates from `$ref` schemas (interfaces like `UserRoleInfo`, enums, etc.).  This prevents clashes when multiple specs are compiled inside the same code-base.
 *   *(Other fields like `defaultConfig` from the CLI are also part of `PackageConfig` but usually set via CLI or have sensible defaults).*
 
 **Example `sg-schema-sync.config.js`:**

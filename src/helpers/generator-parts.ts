@@ -27,7 +27,8 @@ export async function _generateOperationTypes(
   typeBaseName: string, // e.g., CreateUser (from operationId or path)
   tagName: string, // For logging/warnings
   generatedTypeNames: Set<string>, // To track already generated type names globally for the tag
-  spec: OpenAPIV3.Document
+  spec: OpenAPIV3.Document,
+  packageConfig: ResolvedPackageConfig
 ): Promise<GeneratedOperationTypes> {
   const { operation, method } = opInfo;
   let typesString = "";
@@ -40,18 +41,21 @@ export async function _generateOperationTypes(
   let primaryResponseTypeGenerated = false;
   let responseTypeFailed = false;
 
+  const opPrefix = packageConfig.operationTypePrefix ? `${toPascalCase(packageConfig.operationTypePrefix)}_` : "";
+  const schemaPrefix = packageConfig.schemaTypePrefix || "SSGEN_";
+
   // --- Generate Request Body Type ---
   if (operation.requestBody && "content" in operation.requestBody) {
     const requestBodySchema = operation.requestBody.content?.["application/json"]?.schema;
     if (requestBodySchema) {
-      const typeName = `${typeBaseName}_Request`;
+      const typeName = `${opPrefix}${typeBaseName}_Request`;
       actualRequestBodyTypeName = typeName;
       if (!generatedTypeNames.has(typeName)) {
         try {
           let tsType = await compile({ ...(requestBodySchema as JSONSchema), components: spec.components }, typeName, {
             bannerComment: "",
           });
-          tsType = filterDuplicateDeclarations(tsType, generatedTypeNames);
+          tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix);
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
@@ -75,7 +79,7 @@ export async function _generateOperationTypes(
 
       if (response && "content" in response && response.content?.["application/json"]?.schema) {
         const responseSchema = response.content["application/json"].schema;
-        const typeName = `${typeBaseName}_Response${isPrimary ? "" : `_${statusCode}`}`;
+        const typeName = `${opPrefix}${typeBaseName}_Response${isPrimary ? "" : `_${statusCode}`}`;
         if (isPrimary) primaryResponseTypeName = typeName;
 
         if (!generatedTypeNames.has(typeName)) {
@@ -83,7 +87,7 @@ export async function _generateOperationTypes(
             let tsType = await compile({ ...(responseSchema as JSONSchema), components: spec.components }, typeName, {
               bannerComment: "",
             });
-            tsType = filterDuplicateDeclarations(tsType, generatedTypeNames);
+            tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix);
             typesString += `\n${tsType}\n`;
             generatedTypeNames.add(typeName);
             if (isPrimary) primaryResponseTypeGenerated = true;
@@ -129,7 +133,7 @@ export async function _generateOperationTypes(
       }
     });
     if (Object.keys(paramsSchema.properties || {}).length > 0) {
-      const typeName = `${typeBaseName}_Parameters`;
+      const typeName = `${opPrefix}${typeBaseName}_Parameters`;
       actualParametersTypeName = typeName;
       if (!generatedTypeNames.has(typeName)) {
         try {
@@ -137,7 +141,7 @@ export async function _generateOperationTypes(
             bannerComment: "",
             additionalProperties: false,
           });
-          tsType = filterDuplicateDeclarations(tsType, generatedTypeNames);
+          tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix);
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
@@ -556,7 +560,7 @@ export function _generateHookFactory(
 }
 
 // Helper to strip duplicate type/interface/enum declarations based on name
-function filterDuplicateDeclarations(tsCode: string, seenNames: Set<string>): string {
+function filterAndPrefixDeclarations(tsCode: string, seenNames: Set<string>, schemaPrefix: string): string {
   const lines = tsCode.split("\n");
   const resultLines: string[] = [];
   let buffer: string[] = [];
@@ -586,8 +590,29 @@ function filterDuplicateDeclarations(tsCode: string, seenNames: Set<string>): st
       // Starting a new declaration; commit previous buffer first.
       commitBuffer();
       currentName = match[2];
+      // Apply prefix if not already present
+      if (!currentName.startsWith(schemaPrefix)) {
+        const prefixed = `${schemaPrefix}${currentName}`;
+        // Replace declaration line name in buffer
+        const updatedLine = line.replace(currentName, prefixed);
+        buffer.push(updatedLine);
+        // Replace all subsequent occurrences within buffer so far
+        for (let i = 0; i < buffer.length - 1; i++) {
+          buffer[i] = buffer[i].replace(new RegExp(`\\b${currentName}\\b`, "g"), prefixed);
+        }
+        currentName = prefixed;
+        continue; // Skip pushing original line
+      }
     }
-    buffer.push(line);
+    // Replace occurrences of any previously renamed types in this line
+    let processedLine = line;
+    seenNames.forEach((name) => {
+      if (name.startsWith(schemaPrefix)) {
+        const original = name.replace(schemaPrefix, "");
+        processedLine = processedLine.replace(new RegExp(`\\b${original}\\b`, "g"), name);
+      }
+    });
+    buffer.push(processedLine);
   }
   // commit remaining buffer
   commitBuffer();
