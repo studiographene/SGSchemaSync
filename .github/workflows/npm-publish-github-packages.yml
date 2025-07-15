@@ -53,7 +53,7 @@ jobs:
           echo "registry=https://npm.pkg.github.com/" > ~/.npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
   
-      - name: Publish to GitHub Packages
+      - name: Publish with npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm publish --no-git-checks --access=public
+        run: npm publish --access public       # swap flags as needed
