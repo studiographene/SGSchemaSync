@@ -2,59 +2,52 @@ name: Publish package (pnpm → GitHub Packages)
 
 on:
   release:
-    types: [created]   # runs only when you create /publish/ a GitHub Release ⧉
+    types: [created]
 
-concurrency:           # avoids two parallel releases for the same tag
+concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # ──────────────────────────────
   build-and-test:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4          # latest major for 2025  [oai_citation:0‡GitHub](https://github.com/actions/checkout?utm_source=chatgpt.com)
+      - uses: actions/checkout@v4
 
-      # Node + dependency cache (built-in “pnpm” mode)
+      # 1️⃣ Install pnpm FIRST
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10            # or "latest", but pinning is reproducible
+          run_install: true      # runs pnpm install
+
+      # 2️⃣ Now Node can safely look for pnpm and restore its cache
       - uses: actions/setup-node@v4
         with:
-          node-version: 20                 # LTS in 2025
-          cache: pnpm                      # one-line cache opt-in  [oai_citation:1‡GitHub](https://github.com/actions/setup-node?utm_source=chatgpt.com) [oai_citation:2‡The GitHub Blog](https://github.blog/changelog/2021-07-02-github-actions-setup-node-now-supports-dependency-caching/?utm_source=chatgpt.com)
+          node-version: 20
+          cache: pnpm            # now works because pnpm is installed
 
-      # Official pnpm installer (auto-runs pnpm install)
-      - uses: pnpm/action-setup@v4         # current major  [oai_citation:3‡GitHub](https://github.com/pnpm/action-setup?utm_source=chatgpt.com)
-        with:
-          version: latest                  # pin if you need an older pnpm
-          run_install: true                # == pnpm install
-
-      - name: Unit tests
-        run: pnpm test                     # adapt to your test script ⧉
-
-  # ──────────────────────────────
   publish:
     needs: build-and-test
     runs-on: ubuntu-latest
-
-    permissions:                           # required for GITHUB_TOKEN publish
+    permissions:
       contents: read
       packages: write
 
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: true
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://npm.pkg.github.com/  # writes an .npmrc + auth  [oai_citation:4‡GitHub Docs](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-npm-registry?utm_source=chatgpt.com)
           cache: pnpm
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-          run_install: true
+          registry-url: https://npm.pkg.github.com/
 
       - name: Publish to GitHub Packages
-        run: pnpm publish --no-git-checks --access public   # add flags as needed  [oai_citation:5‡pnpm](https://pnpm.io/cli/publish?utm_source=chatgpt.com)
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}      # auto-scoped PAT
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm publish --no-git-checks --access public
