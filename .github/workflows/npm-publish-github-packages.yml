@@ -32,22 +32,28 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+  
     steps:
       - uses: actions/checkout@v4
-
+  
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-          run_install: true
-
+          run_install: true          # runs pnpm install
+  
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
           registry-url: https://npm.pkg.github.com/
-
+  
+      # 👇 add this step
+      - name: Force GPR registry for pnpm
+        run: |
+          echo "registry=https://npm.pkg.github.com/" > ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
+  
       - name: Publish to GitHub Packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm publish --no-git-checks --access public
+        run: pnpm publish --no-git-checks --access=public
