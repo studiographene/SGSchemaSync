@@ -1,10 +1,13 @@
 {
-  "name": "sg-schema-sync",
+  "name": "@studiographene/sg-schema-sync",
   "version": "0.0.1",
   "description": "CLI tool to generate type-safe API clients from OpenAPI v3 specs",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
   "bin": {
     "sg-schema-sync": "dist/cli.js"
   },
