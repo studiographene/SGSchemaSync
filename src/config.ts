@@ -140,6 +140,18 @@ export interface PackageConfig {
    * @default false
    */
   verbose?: boolean;
+
+  /**
+   * Optional prefix added to every OPERATION-specific type generated (Request/Response/Parameters).
+   * Provide a short PascalCase string. If omitted, no prefix is applied (back-compat behaviour).
+   */
+  operationTypePrefix?: string;
+
+  /**
+   * Prefix added to every auxiliary schema type generated from $ref references.
+   * Defaults to "SSGEN_" to avoid collisions in mono-repos.
+   */
+  schemaTypePrefix?: string;
 }
 
 /**
@@ -180,6 +192,9 @@ export interface ResolvedPackageConfig
   stripPathPrefix?: string;
   scaffoldRequesterAdapter: boolean; // Required in Resolved, default applied
   verbose: boolean; // Required in Resolved, default applied
+
+  operationTypePrefix?: string;
+  schemaTypePrefix: string; // Always resolved, default may apply
 }
 
 // Helper function to load and resolve configuration (conceptual)
@@ -218,6 +233,9 @@ export async function loadAndResolveConfig(
   const generateTypesNames = mergedConfig.generateTypesNames ?? defaultConfig.generateTypesNames;
   const generateHooksNames = mergedConfig.generateHooksNames ?? defaultConfig.generateHooksNames;
   const stripPathPrefix = mergedConfig.stripPathPrefix ?? defaultConfig.stripPathPrefix;
+
+  const operationTypePrefix = mergedConfig.operationTypePrefix ?? defaultConfig.operationTypePrefix;
+  const schemaTypePrefix = mergedConfig.schemaTypePrefix ?? defaultConfig.schemaTypePrefix ?? "SSGEN_";
 
   let resolvedDefaultRequesterConfig: Required<DefaultRequesterConfig> | undefined = undefined;
   if (useDefaultRequester) {
@@ -272,6 +290,8 @@ export async function loadAndResolveConfig(
     // Conditionally required
     ...(useDefaultRequester &&
       resolvedDefaultRequesterConfig && { defaultRequesterConfig: resolvedDefaultRequesterConfig }),
+    operationTypePrefix,
+    schemaTypePrefix,
   } as ResolvedPackageConfig;
 }
 
@@ -296,6 +316,9 @@ export const defaultConfig: Partial<PackageConfig> = {
   },
   // defaultRequesterConfig is not set here as it depends on useDefaultRequester being true
   // and getTokenModulePath would be required.
+
+  // New prefix defaults
+  schemaTypePrefix: "SSGEN_", // default applied to schema-derived types
 };
 
 // Base configuration combining parser and package settings
