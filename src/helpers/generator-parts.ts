@@ -55,7 +55,7 @@ export async function _generateOperationTypes(
           let tsType = await compile({ ...(requestBodySchema as JSONSchema), components: spec.components }, typeName, {
             bannerComment: "",
           });
-          tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix);
+          tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix, [typeName]);
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
@@ -87,7 +87,7 @@ export async function _generateOperationTypes(
             let tsType = await compile({ ...(responseSchema as JSONSchema), components: spec.components }, typeName, {
               bannerComment: "",
             });
-            tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix);
+            tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix, [typeName]);
             typesString += `\n${tsType}\n`;
             generatedTypeNames.add(typeName);
             if (isPrimary) primaryResponseTypeGenerated = true;
@@ -141,7 +141,7 @@ export async function _generateOperationTypes(
             bannerComment: "",
             additionalProperties: false,
           });
-          tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix);
+          tsType = filterAndPrefixDeclarations(tsType, generatedTypeNames, schemaPrefix, [typeName]);
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
@@ -560,7 +560,12 @@ export function _generateHookFactory(
 }
 
 // Helper to strip duplicate type/interface/enum declarations based on name
-function filterAndPrefixDeclarations(tsCode: string, seenNames: Set<string>, schemaPrefix: string): string {
+function filterAndPrefixDeclarations(
+  tsCode: string,
+  seenNames: Set<string>,
+  schemaPrefix: string,
+  exemptNames: string[] = []
+): string {
   const lines = tsCode.split("\n");
   const resultLines: string[] = [];
   let buffer: string[] = [];
@@ -591,7 +596,8 @@ function filterAndPrefixDeclarations(tsCode: string, seenNames: Set<string>, sch
       commitBuffer();
       currentName = match[2];
       // Apply prefix if not already present
-      if (!currentName.startsWith(schemaPrefix)) {
+      const shouldPrefix = !currentName.startsWith(schemaPrefix) && !exemptNames.includes(currentName);
+      if (shouldPrefix) {
         const prefixed = `${schemaPrefix}${currentName}`;
         // Replace declaration line name in buffer
         const updatedLine = line.replace(currentName, prefixed);
