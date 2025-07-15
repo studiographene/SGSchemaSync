@@ -32,7 +32,10 @@ jobs:
         with:
           node-version: 20
           registry-url: https://npm.pkg.github.com/
-      - run: pnpm install
+      - name: Install pnpm
+        run: |
+          npm install -g pnpm
+          pnpm install
       - run: pnpm publish
         env:
           NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
