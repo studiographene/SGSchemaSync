@@ -26,7 +26,8 @@ export async function _generateOperationTypes(
   opInfo: OperationInfo,
   typeBaseName: string, // e.g., CreateUser (from operationId or path)
   tagName: string, // For logging/warnings
-  generatedTypeNames: Set<string> // To track already generated type names globally for the tag
+  generatedTypeNames: Set<string>, // To track already generated type names globally for the tag
+  spec: OpenAPIV3.Document
 ): Promise<GeneratedOperationTypes> {
   const { operation, method } = opInfo;
   let typesString = "";
@@ -47,7 +48,11 @@ export async function _generateOperationTypes(
       actualRequestBodyTypeName = typeName;
       if (!generatedTypeNames.has(typeName)) {
         try {
-          const tsType = await compile(requestBodySchema as JSONSchema, typeName, { bannerComment: "" });
+          const tsType = await compile(
+            { ...(requestBodySchema as JSONSchema), components: spec.components },
+            typeName,
+            { bannerComment: "" }
+          );
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
@@ -76,7 +81,9 @@ export async function _generateOperationTypes(
 
         if (!generatedTypeNames.has(typeName)) {
           try {
-            const tsType = await compile(responseSchema as JSONSchema, typeName, { bannerComment: "" });
+            const tsType = await compile({ ...(responseSchema as JSONSchema), components: spec.components }, typeName, {
+              bannerComment: "",
+            });
             typesString += `\n${tsType}\n`;
             generatedTypeNames.add(typeName);
             if (isPrimary) primaryResponseTypeGenerated = true;
@@ -126,7 +133,10 @@ export async function _generateOperationTypes(
       actualParametersTypeName = typeName;
       if (!generatedTypeNames.has(typeName)) {
         try {
-          const tsType = await compile(paramsSchema, typeName, { bannerComment: "", additionalProperties: false });
+          const tsType = await compile({ ...paramsSchema, components: spec.components }, typeName, {
+            bannerComment: "",
+            additionalProperties: false,
+          });
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
