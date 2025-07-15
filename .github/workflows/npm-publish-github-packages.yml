@@ -40,9 +40,9 @@ jobs:
       # 🔑 top-level .npmrc that beats any rogue file
       # ensure top-priority registry + token
       - run: |
-        echo "@studiographene:registry=https://npm.pkg.github.com" > .npmrc
-        echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
-        echo "always-auth=true" >> .npmrc
+          echo "@studiographene:registry=https://npm.pkg.github.com" > .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          echo "always-auth=true" >> .npmrc
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
