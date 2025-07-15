@@ -48,11 +48,10 @@ export async function _generateOperationTypes(
       actualRequestBodyTypeName = typeName;
       if (!generatedTypeNames.has(typeName)) {
         try {
-          const tsType = await compile(
-            { ...(requestBodySchema as JSONSchema), components: spec.components },
-            typeName,
-            { bannerComment: "" }
-          );
+          let tsType = await compile({ ...(requestBodySchema as JSONSchema), components: spec.components }, typeName, {
+            bannerComment: "",
+          });
+          tsType = filterDuplicateDeclarations(tsType, generatedTypeNames);
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
@@ -81,9 +80,10 @@ export async function _generateOperationTypes(
 
         if (!generatedTypeNames.has(typeName)) {
           try {
-            const tsType = await compile({ ...(responseSchema as JSONSchema), components: spec.components }, typeName, {
+            let tsType = await compile({ ...(responseSchema as JSONSchema), components: spec.components }, typeName, {
               bannerComment: "",
             });
+            tsType = filterDuplicateDeclarations(tsType, generatedTypeNames);
             typesString += `\n${tsType}\n`;
             generatedTypeNames.add(typeName);
             if (isPrimary) primaryResponseTypeGenerated = true;
@@ -133,10 +133,11 @@ export async function _generateOperationTypes(
       actualParametersTypeName = typeName;
       if (!generatedTypeNames.has(typeName)) {
         try {
-          const tsType = await compile({ ...paramsSchema, components: spec.components }, typeName, {
+          let tsType = await compile({ ...paramsSchema, components: spec.components }, typeName, {
             bannerComment: "",
             additionalProperties: false,
           });
+          tsType = filterDuplicateDeclarations(tsType, generatedTypeNames);
           typesString += `\n${tsType}\n`;
           generatedTypeNames.add(typeName);
         } catch (err: any) {
@@ -552,6 +553,46 @@ export function _generateHookFactory(
   const leadingDefinitions = !isMutation ? queryKeyTypeAliasDefinition : "";
 
   return `${leadingDefinitions}${operationGroupBanner}\nexport function ${hookFactoryName}(requester: SGSyncRequester) {\n  /**\n${indentedSummary}\n   */\n  return ${genericString}(${optionsAndHookParamsString}) => {${reactQueryHookBlock}\n  };\n}\n`;
+}
+
+// Helper to strip duplicate type/interface/enum declarations based on name
+function filterDuplicateDeclarations(tsCode: string, seenNames: Set<string>): string {
+  const lines = tsCode.split("\n");
+  const resultLines: string[] = [];
+  let buffer: string[] = [];
+  let currentName: string | null = null;
+
+  const commitBuffer = () => {
+    if (currentName) {
+      if (!seenNames.has(currentName)) {
+        resultLines.push(...buffer);
+        seenNames.add(currentName);
+      }
+    } else {
+      // Lines before the first export (rare, like comments) – keep once.
+      if (buffer.length > 0) {
+        resultLines.push(...buffer);
+      }
+    }
+    buffer = [];
+    currentName = null;
+  };
+
+  const exportRegex = /^export (interface|type|enum) (\w+)/;
+
+  for (const line of lines) {
+    const match = line.match(exportRegex);
+    if (match) {
+      // Starting a new declaration; commit previous buffer first.
+      commitBuffer();
+      currentName = match[2];
+    }
+    buffer.push(line);
+  }
+  // commit remaining buffer
+  commitBuffer();
+
+  return resultLines.join("\n");
 }
 
 // Placeholder for SGSyncRequesterOptions and SGSyncRequester if not globally available in this context
