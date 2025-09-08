@@ -227,7 +227,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
         }
         const relativeToGetToken = path
           .relative(tagOutputDir, path.resolve(process.cwd(), packageConfig.defaultRequesterConfig.getTokenModulePath))
-          .replace(/\\\\/g, "/"); // Normalize path for import
+          .replace(/\\/g, "/"); // Normalize path for import
 
         clientModuleContent += `import { ${packageConfig.defaultRequesterConfig.getTokenExportName} as getToken } from '${relativeToGetToken.startsWith(".") ? relativeToGetToken : "./" + relativeToGetToken}';\n`;
         clientModuleContent += `import { createDefaultSGSyncRequester } from \'sg-schema-sync/default-requester\'; // Adjust path if needed\\n\\n`;
@@ -251,7 +251,7 @@ export async function runGenerator(options: GeneratorOptions): Promise<void> {
 
         const relativeToCustomRequester = path
           .relative(tagOutputDir, actualAbsoluteCustomRequesterPath)
-          .replace(/\\\\/g, "/")
+          .replace(/\\/g, "/")
           .replace(/\.(ts|js|mjs|cjs|jsx|tsx)$/, ""); // Strip common extensions
 
         requesterInstanceName = packageConfig.customRequesterConfig.exportName;
