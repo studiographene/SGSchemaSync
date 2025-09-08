@@ -196,7 +196,7 @@ export async function generateFilesForTag(
   if (requiredBaseRequesterTypesForFunctions.length > 0) {
     functionsFilePreamble.push(`// Imports for the requester mechanism\n`);
     functionsFilePreamble.push(
-      `import { ${requiredBaseRequesterTypesForFunctions.join(", ")} } from 'sg-schema-sync/requester-types';\n`
+      `import { ${requiredBaseRequesterTypesForFunctions.join(", ")} } from '@studiographene/sg-schema-sync/requester-types';\n`
     );
     importsAddedToFunctionsPreamble = true;
   }
@@ -218,7 +218,7 @@ export async function generateFilesForTag(
     let finalHooksImports = `// Imports for the requester mechanism and TanStack Query\n`;
 
     if (hookFactoryNames.length > 0) {
-      finalHooksImports += `import { SGSyncRequester } from 'sg-schema-sync/requester-types';\n`;
+      finalHooksImports += `import { SGSyncRequester } from '@studiographene/sg-schema-sync/requester-types';\n`;
     }
 
     if (anyHookNeedsTypesImport) {
